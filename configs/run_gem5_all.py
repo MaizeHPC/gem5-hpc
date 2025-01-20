@@ -74,7 +74,7 @@ mem_type = "Ramulator2"
 ramulator_config = f"{GEM5_DIR}/ext/ramulator2/ramulator2/example_gem5_config.yaml"
 mem_channels = 2
 program_interval = 1000
-debug_type = "MAATrace,MAAAll" #,Exec,-ExecSymbol" # ,MAACpuPort,MAAIndirect"
+debug_type = "MAATrace" #,Exec,-ExecSymbol,MAAController,MAACpuPort,O3CPUAll" # ,MAACpuPort,MAAIndirect"
 #,TLB,MMU" #,MAAAll" #" #,MAAAll,TLB,MMU" #,XBar,Ramulator2" # "MAAAll,MAATrace,XBar,Cache,CacheVerbose,MSHR" # "MAAAll,MAATrace" # "XBar,Cache,MAAAll" # "MAAAll" # "XBar,Cache,MAAAll,HWPrefetch" # PacketQueue
 # debug_type = "LSQ,CacheAll,PseudoInst"
 # debug_type = "O3CPUAll,CacheAll,PseudoInst"
@@ -284,28 +284,28 @@ def add_command_run_MAA(directory, checkpoint, checkpoint_id, command, options, 
 #                                 maa_warmer=True,
 #                                 num_cores=num_cores)
 
-for kernel in ["gather_rmw_dst"]: # ["rmw", "scatter", "gather", "gather_full"]:
-    for mode in ["MAA", "CMP"]: # "CMP", "BASE", 
-        checkpoint_id = None
-        checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/{kernel}/random/256K_{mode}",
-                                                command=f"{GEM5_DIR}/tests/test-progs/MAA/CISC/test_T16K.o",
-                                                options=f"262144 {mode} {kernel} random 32768", num_cores=4)
-        add_command_run_MAA(directory=f"{RSLT_DIR}/{kernel}/random/reorder/256K_{mode}",
-                            checkpoint=f"{CPT_DIR}/{kernel}/random/256K_{mode}",
-                            checkpoint_id = checkpoint_id,
-                            command=f"{GEM5_DIR}/tests/test-progs/MAA/CISC/test_T16K.o",
-                            options=f"262144 {mode} {kernel} random 32768",
-                            mode=mode,
-                            num_cores=4,
-                            do_reorder=True)
-        0(directory=f"{RSLT_DIR}/{kernel}/random/noreorder/256K_{mode}",
-                            checkpoint=f"{CPT_DIR}/{kernel}/random/256K_{mode}",
-                            checkpoint_id = checkpoint_id,
-                            command=f"{GEM5_DIR}/tests/test-progs/MAA/CISC/test_T16K.o",
-                            options=f"262144 {mode} {kernel} random 32768",
-                            mode=mode,
-                            num_cores=4,
-                            do_reorder=False)
+# for kernel in ["gather_rmw_dst"]: # ["rmw", "scatter", "gather", "gather_full"]:
+#     for mode in ["MAA", "CMP"]: # "CMP", "BASE", 
+#         checkpoint_id = None
+#         checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/{kernel}/random/256K_{mode}",
+#                                                 command=f"{GEM5_DIR}/tests/test-progs/MAA/CISC/test_T16K.o",
+#                                                 options=f"262144 {mode} {kernel} random 32768", num_cores=4)
+#         add_command_run_MAA(directory=f"{RSLT_DIR}/{kernel}/random/reorder/256K_{mode}",
+#                             checkpoint=f"{CPT_DIR}/{kernel}/random/256K_{mode}",
+#                             checkpoint_id = checkpoint_id,
+#                             command=f"{GEM5_DIR}/tests/test-progs/MAA/CISC/test_T16K.o",
+#                             options=f"262144 {mode} {kernel} random 32768",
+#                             mode=mode,
+#                             num_cores=4,
+#                             do_reorder=True)
+#         0(directory=f"{RSLT_DIR}/{kernel}/random/noreorder/256K_{mode}",
+#                             checkpoint=f"{CPT_DIR}/{kernel}/random/256K_{mode}",
+#                             checkpoint_id = checkpoint_id,
+#                             command=f"{GEM5_DIR}/tests/test-progs/MAA/CISC/test_T16K.o",
+#                             options=f"262144 {mode} {kernel} random 32768",
+#                             mode=mode,
+#                             num_cores=4,
+#                             do_reorder=False)
 
 ########################################## NAS ##########################################
 # checkpoint_id = None
@@ -434,34 +434,34 @@ for kernel in ["gather_rmw_dst"]: # ["rmw", "scatter", "gather", "gather_full"]:
 # os.system(f"cp {GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-ph-2/relR_8M.dat ./")
 # os.system(f"cp {GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-ph-2/relS_8M.dat ./")
 
-# all_modes = ["MAA"] # ["MAA", "BASE", "DMP", "MAANO"]
-# all_kernels = ["PRH" , "PRO"]
-# all_sizes = [2000000] # , 8000000]
-# all_sizes_str = ["2M"] # , "8M"]
-# for kernel in all_kernels:
-#     for mode in all_modes:
-#         for size, size_str in zip(all_sizes, all_sizes_str):
-#             file_name = None
-#             if mode == "BASE":
-#                 file_name = f"hj_base"
-#             if mode == "DMP":
-#                 file_name = f"hj_base"
-#             if mode == "MAA" or mode == "MAANO":
-#                 file_name = f"hj_maa"
+all_modes = ["MAANO"]
+all_kernels = ["PRH"] # , "PRO"]
+all_sizes = [2000000] # [2000000] # , 8000000]
+all_sizes_str = ["2M2"] # ["2M"] # , "8M"]
+for kernel in all_kernels:
+    for mode in all_modes:
+        for size, size_str in zip(all_sizes, all_sizes_str):
+            file_name = None
+            if mode == "BASE":
+                file_name = f"hj_base"
+            if mode == "DMP":
+                file_name = f"hj_base"
+            if mode == "MAA" or mode == "MAANO":
+                file_name = f"hj_maa"
             
-#             checkpoint_id = None
-#             checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/{kernel}/{mode}/{size_str}",
-#                                                     command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-ph-2/src/bin/x86/{file_name}",
-#                                                     options=f"-a {kernel} -n 4 -r {size} -s {size}",
-#                                                     num_cores=5)
-#             add_command_run_MAA(directory=f"{RSLT_DIR}/{kernel}/{mode}/{size_str}",
-#                                 checkpoint=f"{CPT_DIR}/{kernel}/{mode}/{size_str}",
-#                                 checkpoint_id = checkpoint_id,
-#                                 command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-ph-2/src/bin/x86/{file_name}",
-#                                 options=f"-a {kernel} -n 4 -r {size} -s {size}",
-#                                 mode="MAA" if mode == "MAANO" else mode,
-#                                 do_reorder=False if mode == "MAANO" else True,
-#                                 num_cores=5)
+            checkpoint_id = None
+            checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/{kernel}/{mode}/{size_str}",
+                                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-ph-2/src/bin/x86/{file_name}",
+                                                    options=f"-a {kernel} -n 4 -r {size} -s {size}",
+                                                    num_cores=5)
+            add_command_run_MAA(directory=f"{RSLT_DIR}/{kernel}/{mode}/{size_str}",
+                                checkpoint=f"{CPT_DIR}/{kernel}/{mode}/{size_str}",
+                                checkpoint_id = checkpoint_id,
+                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-ph-2/src/bin/x86/{file_name}",
+                                options=f"-a {kernel} -n 4 -r {size} -s {size}",
+                                mode="MAA" if mode == "MAANO" else mode,
+                                do_reorder=False if mode == "MAANO" else True,
+                                num_cores=5)
 
 ########################################## UME ##########################################
 
