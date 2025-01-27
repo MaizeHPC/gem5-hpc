@@ -113,7 +113,9 @@ protected:
     int my_word_size = -1;
     int my_words_per_cl = -1;
     Addr my_virtual_addr = 0;
-    Addr my_base_addr;
+    Addr my_base_addr, my_min_addr, my_max_addr;
+    bool my_addr_range_valid;
+    int8_t my_addr_range_id;
     int my_dst_tile, my_src_tile, my_src_reg, my_cond_tile, my_max, my_idx_tile;
     bool my_cond_tile_ready, my_idx_tile_ready, my_src_tile_ready;
     int my_expected_responses;

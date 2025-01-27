@@ -492,10 +492,11 @@ void IndirectAccessUnit::fillRowTable(bool &finished, bool &waitForFinish, bool 
             uint32_t idx = maa->spd->getData<uint32_t>(my_idx_tile, my_i);
             num_spd_read_condidx_accesses++;
             Addr vaddr = my_base_addr + my_word_size * idx;
-            Addr block_vaddr = addrBlockAlign(vaddr, block_size);
+            panic_if(my_addr_range_valid && (vaddr < my_min_addr || vaddr >= my_max_addr), "I[%d] %s: vaddr 0x%lx out of range [0x%lx, 0x%lx)!\n", my_indirect_id, __func__, vaddr, my_min_addr, my_max_addr);
+            Addr block_vaddr = addrBlockAligner(vaddr, block_size);
             DPRINTF(MAAIndirect, "I[%d] %s: baseaddr = 0x%lx idx = %u wordsize = %d vaddr = 0x%lx!\n", my_indirect_id, __func__, my_base_addr, idx, my_word_size, vaddr);
             Addr paddr = translatePacket(block_vaddr);
-            Addr block_paddr = addrBlockAlign(paddr, block_size);
+            Addr block_paddr = addrBlockAligner(paddr, block_size);
             DPRINTF(MAAIndirect, "I[%d] %s: idx = %u, addr = 0x%lx!\n", my_indirect_id, __func__, idx, block_paddr);
             uint16_t wid = (vaddr - block_vaddr) / my_word_size;
             std::vector<int> addr_vec = maa->map_addr(block_paddr);
@@ -607,6 +608,10 @@ void IndirectAccessUnit::executeInstruction() {
         my_fill_finished = false;
         my_force_cache_determined = false;
         my_force_cache = false;
+        my_addr_range_valid = my_instruction->addrRangeValid;
+        my_min_addr = my_instruction->minAddr;
+        my_max_addr = my_instruction->maxAddr;
+        my_addr_range_id = my_instruction->addrRangeID;
 
         // Setting the state of the instruction and stream unit
         my_instruction->state = Instruction::Status::Service;
@@ -819,6 +824,7 @@ bool IndirectAccessUnit::checkAndResetAllRowTablesSent() {
 void IndirectAccessUnit::createReadPacket(Addr addr, int latency) {
     /**** Packet generation ****/
     RequestPtr real_req = std::make_shared<Request>(addr, block_size, flags, maa->requestorId);
+    real_req->setRegion(my_addr_range_id);
     PacketPtr read_pkt;
     if (my_instruction->opcode == Instruction::OpcodeType::INDIR_LD) {
         read_pkt = new Packet(real_req, MemCmd::ReadSharedReq);
@@ -1038,6 +1044,8 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
             case Instruction::DataType::UINT32_TYPE: {
                 uint32_t word_data = maa->rf->getData<uint32_t>(my_src_reg);
                 if (my_instruction->optype == Instruction::OPType::ADD_OP) {
+                    DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] (%u) += RF[%d] (%u) = %u!\n",
+                            my_indirect_id, __func__, wid, ((uint32_t *)new_data)[wid], my_src_reg, word_data, ((uint32_t *)new_data)[wid] + word_data);
                     ((uint32_t *)new_data)[wid] += word_data;
                 } else if (my_instruction->optype == Instruction::OPType::MIN_OP) {
                     ((uint32_t *)new_data)[wid] = ((uint32_t *)new_data)[wid] < word_data ? ((uint32_t *)new_data)[wid] : word_data;
@@ -1051,6 +1059,8 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
             case Instruction::DataType::INT32_TYPE: {
                 int32_t word_data = maa->rf->getData<int32_t>(my_src_reg);
                 if (my_instruction->optype == Instruction::OPType::ADD_OP) {
+                    DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] (%d) += RF[%d] (%d) = %d!\n",
+                            my_indirect_id, __func__, wid, ((int32_t *)new_data)[wid], my_src_reg, word_data, ((int32_t *)new_data)[wid] + word_data);
                     ((int32_t *)new_data)[wid] += word_data;
                 } else if (my_instruction->optype == Instruction::OPType::MIN_OP) {
                     ((int32_t *)new_data)[wid] = ((int32_t *)new_data)[wid] < word_data ? ((int32_t *)new_data)[wid] : word_data;
@@ -1064,6 +1074,8 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
             case Instruction::DataType::FLOAT32_TYPE: {
                 float word_data = maa->rf->getData<float>(my_src_reg);
                 if (my_instruction->optype == Instruction::OPType::ADD_OP) {
+                    DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] (%f) += RF[%d] (%f) = %f!\n",
+                            my_indirect_id, __func__, wid, ((float *)new_data)[wid], my_src_reg, word_data, ((float *)new_data)[wid] + word_data);
                     ((float *)new_data)[wid] += word_data;
                 } else if (my_instruction->optype == Instruction::OPType::MIN_OP) {
                     ((float *)new_data)[wid] = ((float *)new_data)[wid] < word_data ? ((float *)new_data)[wid] : word_data;
@@ -1077,6 +1089,8 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
             case Instruction::DataType::UINT64_TYPE: {
                 uint64_t word_data = maa->rf->getData<uint64_t>(my_src_reg);
                 if (my_instruction->optype == Instruction::OPType::ADD_OP) {
+                    DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] (%lu) += RF[%d] (%lu) = %lu!\n",
+                            my_indirect_id, __func__, wid, ((uint64_t *)new_data)[wid], my_src_reg, word_data, ((uint64_t *)new_data)[wid] + word_data);
                     ((uint64_t *)new_data)[wid] += word_data;
                 } else if (my_instruction->optype == Instruction::OPType::MIN_OP) {
                     ((uint64_t *)new_data)[wid] = ((uint64_t *)new_data)[wid] < word_data ? ((uint64_t *)new_data)[wid] : word_data;
@@ -1090,6 +1104,8 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
             case Instruction::DataType::INT64_TYPE: {
                 int64_t word_data = maa->rf->getData<int64_t>(my_src_reg);
                 if (my_instruction->optype == Instruction::OPType::ADD_OP) {
+                    DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] (%ld) += RF[%d] (%ld) = %ld!\n",
+                            my_indirect_id, __func__, wid, ((int64_t *)new_data)[wid], my_src_reg, word_data, ((int64_t *)new_data)[wid] + word_data);
                     ((int64_t *)new_data)[wid] += word_data;
                 } else if (my_instruction->optype == Instruction::OPType::MIN_OP) {
                     ((int64_t *)new_data)[wid] = ((int64_t *)new_data)[wid] < word_data ? ((int64_t *)new_data)[wid] : word_data;
@@ -1103,6 +1119,8 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
             case Instruction::DataType::FLOAT64_TYPE: {
                 double word_data = maa->rf->getData<double>(my_src_reg);
                 if (my_instruction->optype == Instruction::OPType::ADD_OP) {
+                    DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] (%lf) += RF[%d] (%lf) = %lf!\n",
+                            my_indirect_id, __func__, wid, ((double *)new_data)[wid], my_src_reg, word_data, ((double *)new_data)[wid] + word_data);
                     ((double *)new_data)[wid] += word_data;
                 } else if (my_instruction->optype == Instruction::OPType::MIN_OP) {
                     ((double *)new_data)[wid] = ((double *)new_data)[wid] < word_data ? ((double *)new_data)[wid] : word_data;
@@ -1128,6 +1146,7 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
     Cycles total_latency = updateLatency(num_recv_spd_read_accesses, 0, num_recv_spd_write_accesses, num_recv_rt_accesses, 0, total_num_RT_subslices);
     if (my_instruction->opcode == Instruction::OpcodeType::INDIR_ST_VECTOR || my_instruction->opcode == Instruction::OpcodeType::INDIR_ST_SCALAR || my_instruction->opcode == Instruction::OpcodeType::INDIR_RMW_VECTOR || my_instruction->opcode == Instruction::OpcodeType::INDIR_RMW_SCALAR) {
         RequestPtr real_req = std::make_shared<Request>(addr, block_size, flags, maa->requestorId);
+        real_req->setRegion(my_addr_range_id);
         PacketPtr write_pkt = new Packet(real_req, MemCmd::WritebackDirty);
         write_pkt->allocate();
         write_pkt->setData(new_data);

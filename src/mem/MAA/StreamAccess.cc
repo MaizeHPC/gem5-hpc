@@ -88,10 +88,10 @@ int StreamAccessUnit::getGBGAddr(int channel, int rank, int bankgroup) {
 }
 StreamAccessUnit::PageInfo StreamAccessUnit::getPageInfo(int i, Addr base_addr, int word_size, int min, int stride) {
     Addr word_vaddr = base_addr + word_size * i;
-    Addr block_vaddr = addrBlockAlign(word_vaddr, block_size);
+    Addr block_vaddr = addrBlockAligner(word_vaddr, block_size);
     Addr block_paddr = translatePacket(block_vaddr);
     Addr word_paddr = block_paddr + (word_vaddr - block_vaddr);
-    Addr page_paddr = addrBlockAlign(block_paddr, page_size);
+    Addr page_paddr = addrBlockAligner(block_paddr, page_size);
     assert(word_paddr >= page_paddr);
     Addr diff_word_page_paddr = word_paddr - page_paddr;
     assert(diff_word_page_paddr % word_size == 0);
@@ -181,6 +181,10 @@ void StreamAccessUnit::executeInstruction() {
         }
         all_page_info[all_page_info.size() - 1].max_itr = my_max;
         my_all_page_info.insert(all_page_info[all_page_info.size() - 1]);
+        my_addr_range_valid = my_instruction->addrRangeValid;
+        my_min_addr = my_instruction->minAddr;
+        my_max_addr = my_instruction->maxAddr;
+        my_addr_range_id = my_instruction->addrRangeID;
 
         // Initialization
         my_received_responses = 0;
@@ -238,7 +242,8 @@ void StreamAccessUnit::executeInstruction() {
                     }
                     if (my_cond_tile == -1 || maa->spd->getData<uint32_t>(my_cond_tile, page_it->curr_idx) != 0) {
                         Addr vaddr = my_base_addr + my_word_size * page_it->curr_itr;
-                        Addr block_vaddr = addrBlockAlign(vaddr, block_size);
+                        panic_if(my_addr_range_valid && (vaddr < my_min_addr || vaddr >= my_max_addr), "S[%d] %s: vaddr 0x%lx out of range [0x%lx, 0x%lx)!\n", my_stream_id, __func__, vaddr, my_min_addr, my_max_addr);
+                        Addr block_vaddr = addrBlockAligner(vaddr, block_size);
                         if (block_vaddr != page_it->last_block_vaddr) {
                             if (page_it->last_block_vaddr != 0) {
                                 Addr paddr = translatePacket(page_it->last_block_vaddr);
@@ -347,6 +352,7 @@ void StreamAccessUnit::executeInstruction() {
 void StreamAccessUnit::createReadPacket(Addr addr, int latency) {
     /**** Packet generation ****/
     RequestPtr real_req = std::make_shared<Request>(addr, block_size, flags, maa->requestorId);
+    real_req->setRegion(my_addr_range_id);
     PacketPtr my_pkt;
     if (my_instruction->opcode == Instruction::OpcodeType::STREAM_LD) {
         my_pkt = new Packet(real_req, MemCmd::ReadSharedReq);
@@ -425,6 +431,7 @@ bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr, int core_id) 
         }
     } else {
         RequestPtr real_req = std::make_shared<Request>(addr, block_size, flags, maa->requestorId);
+        real_req->setRegion(my_addr_range_id);
         PacketPtr write_pkt = new Packet(real_req, MemCmd::WritebackDirty);
         write_pkt->allocate();
         write_pkt->setData(new_data);

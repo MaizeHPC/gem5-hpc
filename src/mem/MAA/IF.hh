@@ -134,6 +134,9 @@ public:
         "FNS",
         "MAX"};
     Addr baseAddr;
+    Addr minAddr, maxAddr;
+    int8_t addrRangeID;
+    bool addrRangeValid;
     int16_t src1RegID, src2RegID, src3RegID, dst1RegID, dst2RegID;
     int16_t src1SpdID, src2SpdID;
     TileStatus src1Status, src2Status;

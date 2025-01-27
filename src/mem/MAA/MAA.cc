@@ -68,6 +68,8 @@ MAA::MAA(const MAAParams &p)
       num_cores(p.num_cores),
       rowtable_latency(p.rowtable_latency),
       cache_snoop_latency(p.cache_snoop_latency),
+      addrRegions(MAX_CMD_REGIONS, {0, 0}),
+      maxRegionID(-1),
       system(p.system),
       mmu(p.mmu),
       issueInstructionEvent([this] { issueInstruction(); }, name()),
@@ -166,6 +168,47 @@ MAA::~MAA() {
         delete port;
     for (auto port : cpuSidePorts)
         delete port;
+}
+
+void MAA::addAddrRegion(Addr start, Addr end, int8_t id) {
+    panic_if(id >= MAX_CMD_REGIONS, "Region ID %d exceeds the maximum number of regions %d\n", id, MAX_CMD_REGIONS);
+    panic_if(start >= end, "Region ID %d start address 0x%x >= end address 0x%x\n", id, start, end);
+    panic_if(end == 0, "Region ID %d end address 0x%x is invalid\n", id, end);
+    maxRegionID = -1;
+    for (int i = 0; i < MAX_CMD_REGIONS; i++) {
+        if (start <= addrRegions[i].first && addrRegions[i].first < end) {
+            DPRINTF(MAA, "Region[%d]:[0x%x-0x%x] overlaps with new Region[%d]:[0x%x-0x%x], removing it\n", i, addrRegions[i].first, addrRegions[i].second, id, start, end);
+            addrRegions[i] = {0, 0};
+        } else {
+            maxRegionID = i;
+        }
+    }
+    DPRINTF(MAA, "Region[%d]:[0x%x-0x%x] added\n", id, start, end);
+    addrRegions[id] = {start, end};
+    if (id > maxRegionID) {
+        maxRegionID = id;
+    }
+}
+
+void MAA::clearAddrRegion() {
+    DPRINTF(MAA, "all addr regions cleared\n");
+    maxRegionID = -1;
+    for (int i = 0; i < MAX_CMD_REGIONS; i++) {
+        addrRegions[i] = {0, 0};
+    }
+}
+
+int MAA::getAddrRegion(Addr addr) {
+    int reg_id = -1;
+    for (int reg_idx = 0; reg_idx <= maxRegionID; reg_idx++) {
+        if (addrRegions[reg_idx].first == 0 && addrRegions[reg_idx].second == 0) {
+            continue;
+        } else if (addrRegions[reg_idx].first <= addr && addr < addrRegions[reg_idx].second) {
+            reg_id = reg_idx;
+            break;
+        }
+    }
+    return reg_id;
 }
 
 Port &MAA::getPort(const std::string &if_name, PortID idx) {
@@ -473,6 +516,14 @@ void MAA::dispatchInstruction() {
             instruction->dst1Status = (Instruction::TileStatus)getTileStatus(instruction, instruction->dst1SpdID, true);
             // Instructions with DST2: range loop
             instruction->dst2Status = (Instruction::TileStatus)getTileStatus(instruction, instruction->dst2SpdID, true);
+            instruction->addrRangeID = getAddrRegion(instruction->baseAddr);
+            if (instruction->addrRangeID != -1) {
+                instruction->minAddr = addrRegions[instruction->addrRangeID].first;
+                instruction->maxAddr = addrRegions[instruction->addrRangeID].second;
+                instruction->addrRangeValid = true;
+            } else {
+                instruction->addrRangeValid = false;
+            }
             if (ifile->pushInstruction(*instruction)) {
                 DPRINTF(MAAController, "%s: %s dispatched!\n", __func__, instruction->print());
                 if (instruction->dst1SpdID != -1) {

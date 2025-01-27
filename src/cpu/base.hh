@@ -58,6 +58,7 @@
 #include "sim/probe/probe.hh"
 #include "sim/signal.hh"
 #include "sim/system.hh"
+#include "mem/MAA/MAA.hh"
 
 namespace gem5 {
 
@@ -250,6 +251,9 @@ protected:
 
     trace::InstTracer *tracer;
 
+    MAA *maa;
+    bool maa_available;
+
 public:
     /** Invalid or unknown Pid. Possible when operating system is not present
      *  or has not assigned a pid yet */
@@ -257,6 +261,10 @@ public:
 
     /// Provide access to the tracer pointer
     trace::InstTracer *getTracer() { return tracer; }
+
+    MAA *getMAA();
+    void setMAA(MAA *_maa);
+    bool hasMAA();
 
     /// Notify the CPU that the indicated context is now active.
     virtual void activateContext(ThreadID thread_num);

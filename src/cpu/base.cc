@@ -172,6 +172,8 @@ BaseCPU::BaseCPU(const Params &p, bool is_checker)
     }
 
     tracer = params().tracer;
+    maa = nullptr;
+    maa_available = false;
 
     if (params().isa.size() != numThreads) {
         fatal("Number of ISAs (%i) assigned to the CPU does not equal number "
@@ -529,6 +531,16 @@ void BaseCPU::suspendContext(ThreadID thread_num) {
         schedule(enterPwrGatingEvent, clockEdge(pwrGatingLatency));
     }
 }
+
+MAA *BaseCPU::getMAA() { return maa; }
+
+void BaseCPU::setMAA(MAA *_maa) {
+    panic_if(maa_available, "MAA already set!\n");
+    maa = _maa;
+    maa_available = true;
+}
+
+bool BaseCPU::hasMAA() { return maa_available; }
 
 void BaseCPU::haltContext(ThreadID thread_num) {
     updateCycleCounters(BaseCPU::CPU_STATE_SLEEP);

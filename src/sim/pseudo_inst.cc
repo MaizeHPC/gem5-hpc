@@ -558,11 +558,15 @@ void workend(ThreadContext *tc, uint64_t workid, uint64_t threadid) {
 void addmemregion(ThreadContext *tc, Addr start, Addr end, uint64_t id) {
     DPRINTF(PseudoInst, "pseudo_inst::addmemregion(%d: 0x%x, 0x%x)\n", id, start, end);
     static_cast<gem5::o3::CPU *>(tc->getCpuPtr())->addMemRegion(start, end, id);
+    if (tc->getCpuPtr()->hasMAA())
+        tc->getCpuPtr()->getMAA()->addAddrRegion(start, end, id);
 }
 
 void clearmemregion(ThreadContext *tc) {
     DPRINTF(PseudoInst, "pseudo_inst::clearmemregion()\n");
     static_cast<gem5::o3::CPU *>(tc->getCpuPtr())->clearMemRegion();
+    if (tc->getCpuPtr()->hasMAA())
+        tc->getCpuPtr()->getMAA()->clearAddrRegion();
 }
 
 // int *m5MAAload(ThreadContext *tc, int *a, int *b, int min, int max) {

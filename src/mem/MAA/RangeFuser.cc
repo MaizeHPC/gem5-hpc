@@ -190,10 +190,10 @@ void RangeFuserUnit::executeInstruction() {
             }
             if (my_cond_tile == -1 || maa->spd->getData<uint32_t>(my_cond_tile, my_last_i) != 0) {
                 if (my_last_j == -1) {
-                    uint32_t my_min_j = maa->spd->getData<uint32_t>(my_min_tile, my_last_i);
+                    my_last_j = maa->spd->getData<uint32_t>(my_min_tile, my_last_i);
                     num_spd_read_accesses++;
-                    my_last_j = my_min_j;
                 }
+                uint32_t my_min_j = maa->spd->getData<uint32_t>(my_min_tile, my_last_i);
                 uint32_t my_max_j = maa->spd->getData<uint32_t>(my_max_tile, my_last_i);
                 num_spd_read_accesses++;
                 num_computed_words++;
@@ -201,7 +201,7 @@ void RangeFuserUnit::executeInstruction() {
                     maa->spd->setData(my_dst_i_tile, my_idx_j, my_last_i);
                     maa->spd->setData(my_dst_j_tile, my_idx_j, my_last_j);
                     num_spd_write_accesses++;
-                    DPRINTF(MAARangeFuser, "R[%d] %s: [%d][%d] inserted!\n", my_range_id, __func__, my_last_i, my_last_j);
+                    DPRINTF(MAARangeFuser, "R[%d] %s: [%d-%d-%d][%d-%d-%d] inserted!\n", my_range_id, __func__, 0, my_last_i, my_max_i, my_min_j, my_last_j, my_max_j);
                 }
                 if (my_last_j >= my_max_j) {
                     my_last_j = -1;

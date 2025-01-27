@@ -9,7 +9,7 @@
 #endif
 
 namespace gem5 {
-Instruction::Instruction() : baseAddr(0),
+Instruction::Instruction() : baseAddr(0xFFFFFFFFFFFFFFFF),
                              src1RegID(-1),
                              src2RegID(-1),
                              src3RegID(-1),
@@ -34,8 +34,14 @@ Instruction::Instruction() : baseAddr(0),
                              PC(0),
                              if_id(-1) {}
 std::string Instruction::print() const {
+    char baseAddrStr[32];
+    std::sprintf(baseAddrStr, "0x%lx", baseAddr);
+    char minAddrStr[32];
+    std::sprintf(minAddrStr, "0x%lx", minAddr);
+    char maxAddrStr[32];
+    std::sprintf(maxAddrStr, "0x%lx", maxAddr);
     std::ostringstream str;
-    ccprintf(str, "INSTR[%s%s%s%s%s%s%s%s%s%s%s%s%s%s]",
+    ccprintf(str, "INSTR[%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s]",
              "opcode(" + opcode_names[(int)opcode] + ")",
              optype == OPType::MAX ? "" : " optype(" + optype_names[(int)optype] + ")",
              " datatype(" + datatype_names[(int)datatype] + ")",
@@ -49,7 +55,10 @@ std::string Instruction::print() const {
              dst2SpdID == -1 ? "" : " dstSPD2(" + std::to_string(dst2SpdID) + "/" + tile_status_names[(uint8_t)dst2Status] + ")",
              dst1RegID == -1 ? "" : " dstREG1(" + std::to_string(dst1RegID) + ")",
              dst2RegID == -1 ? "" : " dstREG2(" + std::to_string(dst2RegID) + ")",
-             condSpdID == -1 ? "" : " condSPD(" + std::to_string(condSpdID) + "/" + tile_status_names[(uint8_t)condStatus] + ")");
+             condSpdID == -1 ? "" : " condSPD(" + std::to_string(condSpdID) + "/" + tile_status_names[(uint8_t)condStatus] + ")",
+             baseAddr != 0xFFFFFFFFFFFFFFFF ? " baseAddr(" + std::string(baseAddrStr) + ")" : "",
+             addrRangeValid ? " minAddr(" + std::string(minAddrStr) + ")" : "",
+             addrRangeValid ? " maxAddr(" + std::string(maxAddrStr) + ")" : "");
     return str.str();
 }
 int Instruction::getWordSize(int tile_id) {

@@ -49,6 +49,7 @@ typedef Register *RegisterPtr;
  * A basic cache interface. Implements some common functions for speed.
  */
 class MAA : public ClockedObject {
+    typedef std::pair<Addr, Addr> AddrRegion;
     /**
      * A cache response port is used for the CPU-side port of the cache,
      * and it is basically a simple timing port that uses a transmit
@@ -411,6 +412,12 @@ public:
     Cycles cache_snoop_latency;
     RequestorID requestorId;
 
+    std::vector<AddrRegion> addrRegions;
+    int maxRegionID;
+    void addAddrRegion(Addr start, Addr end, int8_t id);
+    void clearAddrRegion();
+    int getAddrRegion(Addr addr);
+
 public:
     /** System we are currently operating in. */
     System *system;
@@ -676,7 +683,7 @@ public:
  * @param block_size Block size in bytes.
  * @return Address of the closest aligned block.
  */
-inline Addr addrBlockAlign(Addr addr, Addr block_size) {
+inline Addr addrBlockAligner(Addr addr, Addr block_size) {
     return addr & ~(block_size - 1);
 }
 inline int getCeiling(int a, int b) {

@@ -733,7 +733,7 @@ Fault LSQ::pushRequest(const DynInstPtr &inst, bool isLoad, uint8_t *data,
                 continue;
             } else if (addrRegions[reg_idx].first <= addr && addr < addrRegions[reg_idx].second) {
                 reg = reg_idx;
-                DPRINTF(LSQ, "addr region[%d] [%x-%x] detected for addr[%x]\n", reg_idx, addrRegions[reg_idx].first, addrRegions[reg_idx].second, addr);
+                DPRINTF(LSQ, "addr region[%d] [0x%x-0x%x] detected for addr[0x%x]\n", reg_idx, addrRegions[reg_idx].first, addrRegions[reg_idx].second, addr);
                 break;
             }
         }

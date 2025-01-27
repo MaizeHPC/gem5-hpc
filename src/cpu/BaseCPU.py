@@ -74,6 +74,7 @@ class BaseCPU(ClockedObject):
         PyBindMethod("getCurrentInstCount"),
         PyBindMethod("scheduleSimpointsInstStop"),
         PyBindMethod("scheduleInstStopAnyThread"),
+        PyBindMethod("setMAA"),
     ]
 
     @classmethod
@@ -315,3 +316,6 @@ class BaseCPU(ClockedObject):
                 self._uncached_interrupt_request_ports
                 + ["interrupts[0].int_requestor"]
             )
+
+    def addMAAInstance(self, maa):
+        self.getCCObject().setMAA(maa.getCCObject())
