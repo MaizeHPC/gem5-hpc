@@ -386,24 +386,24 @@ def add_command_run_MAA(directory, checkpoint, checkpoint_id, command, options, 
 #                     mode="MAA",
 #                     do_reorder=False)
 
-all_modes = ["BASE", "MAA", "MAANO"] #, "DMP", "BASE"
-all_kernels = ["bc"] # ["bfs", "pr", "bc", "sssp"]
-for kernel in all_kernels:
-    for mode in all_modes:
-        for size in [20, 22]:
-            file_name = f"{kernel}_maa" if (mode == "MAA" or mode == "MAANO") else f"{kernel}"
-            graph_ext = "wsg" if kernel == "sssp" else "sg"
-            checkpoint_id = None
-            checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/{kernel}/{mode}/{size}",
-                                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
-                                                    options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1")
-            add_command_run_MAA(directory=f"{RSLT_DIR}/{kernel}/{mode}/{size}",
-                                checkpoint=f"{CPT_DIR}/{kernel}/{mode}/{size}",
-                                checkpoint_id = checkpoint_id,
-                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
-                                options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
-                                mode="MAA" if mode == "MAANO" else mode,
-                                do_reorder=False if mode == "MAANO" else True)
+# all_modes = ["BASE", "MAA", "MAANO"] #, "DMP", "BASE"
+# all_kernels = ["bc"] # ["bfs", "pr", "bc", "sssp"]
+# for kernel in all_kernels:
+#     for mode in all_modes:
+#         for size in [20, 22]:
+#             file_name = f"{kernel}_maa" if (mode == "MAA" or mode == "MAANO") else f"{kernel}"
+#             graph_ext = "wsg" if kernel == "sssp" else "sg"
+#             checkpoint_id = None
+#             checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/{kernel}/{mode}/{size}",
+#                                                     command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
+#                                                     options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1")
+#             add_command_run_MAA(directory=f"{RSLT_DIR}/{kernel}/{mode}/{size}",
+#                                 checkpoint=f"{CPT_DIR}/{kernel}/{mode}/{size}",
+#                                 checkpoint_id = checkpoint_id,
+#                                 command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
+#                                 options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
+#                                 mode="MAA" if mode == "MAANO" else mode,
+#                                 do_reorder=False if mode == "MAANO" else True)
 
 # ########################################## SPATTER ##########################################
 # add_command_run_MAA(directory=f"{RSLT_DIR}/spatter/flag/MAA",
@@ -485,7 +485,7 @@ for kernel in all_kernels:
 #                                 do_reorder=False if mode == "MAANO" else True,
 #                                 num_cores=5)
 
-all_modes = ["MAANO","MAA","BASE"] #, "DMP"
+all_modes = ["MAANO","MAA"] #,"BASE"] #, "DMP"
 all_kernels = ["PRH", "PRO"]
 all_sizes = [200000, 2000000] # [2000000] # , 8000000]
 all_sizes_str = ["200K", "2M"] # ["2M"] # , "8M"]

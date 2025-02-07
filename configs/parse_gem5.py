@@ -1,12 +1,16 @@
 import os
-DATA_DIR = "/data1/arkhadem/gem5-hpc/tests"
-RSLT_DIR = f"{DATA_DIR}/results"
 import argparse
+from MCPAT_converter import E2EConvertor
+import subprocess
 
 parser = argparse.ArgumentParser(description='Parse gem5.')
 parser.add_argument('--dir', type=str, help='Path to the result directory.', required=True)
-parser.add_argument('--mode', type=str, help='Path to the result directory.', required=True)
+parser.add_argument('--mode', type=str, help='Mode of the simulation.', required=True, choices=["maa", "base"])
 parser.add_argument('--target', type=int, help='Traget stat number.', required=True)
+parser.add_argument('--mcpat_template', type=str, help='MCPAT template to use.', default="configs/template.xml")
+parser.add_argument('--no_mcpat_run', help='Do not run MCPAT, and use pre-existing files.', action="store_true")
+
+
 args = parser.parse_args()
 directory = args.dir
 mode = args.mode
@@ -15,6 +19,8 @@ if mode == "maa":
 elif mode == "base":
     mode = "BASE"
 target_stats = args.target
+mcpat_template = args.mcpat_template
+mcpat_run = True if args.no_mcpat_run == None or args.no_mcpat_run == False else False
 
 # P_PRE_STBY = 54.9
 # P_ACT_STBY = 75.0
@@ -47,53 +53,25 @@ VPP = 2.5
 
 GIGA = 1000000000.000
 
-# PRE-ACT time (ns)
-tRP = 20.0 * 0.625
-nRP = 20.0
-# ACT-RD time (ns)
-tRCD = 20.0 * 0.625
-nRCD = 20.0
-# RD/WR time (ns)
-tBL = 4.0 * 0.625
-nBL = 4.0
-# ACT to PRE time (ns)
-tRAS = 52.0 * 0.625
-nRAS = 52.0
 # clock time (ns)
 tCK = 0.625
+# PRE-ACT time (ns)
+tRP = 20.0 * tCK
+nRP = 20.0
+# ACT-RD time (ns)
+tRCD = 20.0 * tCK
+nRCD = 20.0
+# RD/WR time (ns)
+tBL = 4.0 * tCK
+nBL = 4.0
+# ACT to PRE time (ns)
+tRAS = 52.0 * tCK
+nRAS = 52.0
 
-all_kernels =   ["gather",
-                "scatter",
-                "rmw",
-                "gather_scatter",
-                "gather_rmw",
-                "gather_rmw_cond",
-                "gather_rmw_directrangeloop_cond",
-                "gather_rmw_indirectrangeloop_cond",
-                "gather_rmw_cond_indirectrangeloop_cond",
-                "gather_rmw_indirectcond_indirectrangeloop_indirectcond"]
 
-num_cores = {"gather": 4,
-            "scatter": 1,
-            "rmw": 1,
-            "gather_scatter": 1,
-            "gather_rmw": 1,
-            "gather_rmw_cond": 1,
-            "gather_rmw_directrangeloop_cond": 1,
-            "gather_rmw_indirectrangeloop_cond": 1,
-            "gather_rmw_cond_indirectrangeloop_cond": 1,
-            "gather_rmw_indirectcond_indirectrangeloop_indirectcond": 1}
+CORE_FREQUENCY = 3.2 * GIGA
 
-all_maa_cycles = ["INDRD",
-                "INDWR",
-                "INDRMW",
-                "STRRD",
-                "RANGE",
-                "ALUS",
-                "ALUV",
-                "INV",
-                "IDLE",
-                "Total"]
+all_maa_cycles = ["INDRD", "INDWR", "INDRMW", "STRRD", "RANGE", "ALUS", "ALUV", "INV", "IDLE", "Total"]
 
 all_maa_indirect_cycles = ["Fill", "Drain", "Build", "Request"]
 all_cache_stats = {"Avg-SPD-Latency": {"PRE": "system.switch_cpus", "POST": ".lsq0.loadToUse_0::mean"},
@@ -317,7 +295,7 @@ def parse_ramulator_stats(stats, target_stats):
     DRAM_DQ_ENERGY = 0
     total_DRAM_energy = 0
 
-    if os.path.exists(f"{stats}") == True:    
+    if os.path.exists(f"{stats}") == True:
         COMMAND = f"cat {stats} | sed -n \'/Dumping ramulator/,$p\' > {stats}.ramulator"
         # print(COMMAND)
         os.system(COMMAND)
@@ -408,18 +386,91 @@ def parse_ramulator_stats(stats, target_stats):
             # assert DRAM_RB_hitrate >= 0, f"DRAM_RB_hitrate: 100 - {DRAM_ACT * 100.00} / {DRAM_RD + DRAM_WR} == {DRAM_RB_hitrate}"
             DRAM_CTRL_occ = sum(avg_occupancy) / len(avg_occupancy)
             PRE_time = DRAM_PRE / 16.0000 * tRP
-            ACT_time = cycles * tCK - PRE_time
+            ACT_time = num_channels * cycles * tCK - PRE_time
             assert ACT_time >= 0, f"ACT_time: {cycles} * {tCK} - {PRE_time} == {ACT_time} <= 0"
             DRAM_PRE_STBY_ENERGY = (PRE_time * ((VDD * IDD2N) + (VPP * IPP2N))) / GIGA
+            DRAM_PRE_STBY_ENERGY *= 8.0000
             DRAM_ACT_STBY_ENERGY = (ACT_time * ((VDD * IDD3N) + (VPP * IPP3N))) / GIGA
+            DRAM_ACT_STBY_ENERGY *= 8.0000
             DRAM_ACTPRE_ENERGY = DRAM_ACT * ((IDD0 - IDD3N) * VDD + (IPP0 - IPP3N) * VPP) * tRAS
             DRAM_ACTPRE_ENERGY += DRAM_PRE * ((IDD0 - IDD2N) * VDD + (IPP0 - IPP2N) * VPP) * tRP
             DRAM_ACTPRE_ENERGY /= GIGA
+            DRAM_ACTPRE_ENERGY *= 8.0000
             DRAM_RD_ENERGY = DRAM_RD * ((IDD4R - IDD3N) * VDD + (IPP4R - IPP3N) * VPP) * tBL / GIGA
+            DRAM_RD_ENERGY *= 8.0000
             DRAM_WR_ENERGY = DRAM_WR * ((IDD4W - IDD3N) * VDD + (IPP4W - IPP3N) * VPP) * tBL / GIGA
+            DRAM_WR_ENERGY *= 8.0000
             DRAM_DQ_ENERGY = (DRAM_RD + DRAM_WR) * PDSDQ * tBL / GIGA
+            DRAM_DQ_ENERGY *= 8.0000
             total_DRAM_energy = DRAM_PRE_STBY_ENERGY + DRAM_ACT_STBY_ENERGY + DRAM_ACTPRE_ENERGY + DRAM_RD_ENERGY + DRAM_WR_ENERGY + DRAM_DQ_ENERGY
     return DRAM_RD, DRAM_WR, DRAM_ACT, DRAM_RD_BW, DRAM_WR_BW, DRAM_total_BW, DRAM_RB_hitrate, DRAM_CTRL_occ, DRAM_PRE_STBY_ENERGY, DRAM_ACT_STBY_ENERGY, DRAM_ACTPRE_ENERGY, DRAM_RD_ENERGY, DRAM_WR_ENERGY, DRAM_DQ_ENERGY, total_DRAM_energy
+
+def parse_mcpat_stats(sim_dir, target_stats, latency):
+    core_static_power = 0
+    core_dynamic_power = 0
+    core_power = 0
+    core_static_energy = 0
+    core_dynamic_energy = 0
+    core_energy = 0
+    llc_static_power = 0
+    llc_dynamic_power = 0
+    llc_power = 0
+    llc_static_energy = 0
+    llc_dynamic_energy = 0
+    llc_energy = 0
+
+    if mcpat_run:
+        E2EConvertor(f"{sim_dir}/stats.txt", f"{sim_dir}/config.json", mcpat_template, f"{sim_dir}/mcpat.xml")
+        COMMAND = f"./ext/mcpat/build/mcpat --infile {sim_dir}/mcpat.xml --print_level 5"
+        with open(f"{sim_dir}/mcpat.stats", "w") as f:
+            subprocess.run(COMMAND, shell=True, stdout=f, stderr=f)
+    space = None
+    with open(f"{sim_dir}/mcpat.stats", "r") as f:
+        lines = f.readlines()
+        for line in lines:
+            if "Total Cores" in line:
+                space = "core"
+            elif "Total L3s" in line:
+                space = "llc"
+            elif "Total MCs" in line:
+                space = "core"
+            elif "******************" in line:
+                space = None
+            elif space != None:
+                if "Subthreshold Leakage with power gating" in line:
+                    power = float(line.split(" = ")[1].split(" ")[0])
+                    if space == "core":
+                        core_static_power += power
+                    elif space == "llc":
+                        llc_static_power += power
+                    else:
+                        assert False
+                elif "Gate Leakage" in line:
+                    power = float(line.split(" = ")[1].split(" ")[0])
+                    if space == "core":
+                        core_static_power += power
+                    elif space == "llc":
+                        llc_static_power += power
+                    else:
+                        assert False
+                elif "Runtime Dynamic" in line:
+                    power = float(line.split(" = ")[1].split(" ")[0])
+                    if space == "core":
+                        core_dynamic_power += power
+                    elif space == "llc":
+                        llc_dynamic_power += power
+                    else:
+                        assert False
+        core_power = core_static_power + core_dynamic_power
+        llc_power = llc_static_power + llc_dynamic_power
+        core_static_energy = core_static_power * latency
+        core_dynamic_energy = core_dynamic_power * latency
+        core_energy = core_power * latency
+        llc_static_energy = llc_static_power * latency
+        llc_dynamic_energy = llc_dynamic_power * latency
+        llc_energy = llc_power * latency
+    return core_static_power, core_dynamic_power, core_power, llc_static_power, llc_dynamic_power, llc_power, core_static_energy, core_dynamic_energy, core_energy, llc_static_energy, llc_dynamic_energy, llc_energy
+
 
 print("cycles", end=",")
 for maa_cycle in all_maa_cycles:
@@ -431,7 +482,7 @@ for cache_stat in all_cache_stats.keys():
 for instruction_type in all_instruction_types.keys():
     print(f"{instruction_type}", end=",")
 print("LSQ-LD-OCC", end=",")
-print("DRAM-RD,DRAM-WR,DRAM-ACT,DRAM-RD-BW,DRAM-WR-BW,DRAM-total-BW,DRAM-RB-hitrate,DRAM-CTRL-occ,DRAM-PRE-STB,DRAM-ACT-STB,DRAM-ACTPRE,DRAM-RD,DRAM-WR,DRAM-DQ,DRAM-Total", end=",")
+print("DRAM-RD,DRAM-WR,DRAM-ACT,DRAM-RD-BW,DRAM-WR-BW,DRAM-total-BW,DRAM-RB-hitrate,DRAM-CTRL-occ,DRAM-PRE-STB-energy,DRAM-ACT-STB-energy,DRAM-ACTPRE-energy,DRAM-RD-energy,DRAM-WR-energy,DRAM-DQ-energy,DRAM-Total-energy,CORE-ST-Power,CORE-DY-Power,CORE-Power,LLC-ST-Power,LLC-DY-Power,LLC-Power,CORE-ST-Energy,CORE-DY-Energy,CORE-Energy,LLC-ST-Energy,LLC-DY-Energy,LLC-Energy", end=",")
 print()
 
 
@@ -440,6 +491,7 @@ def get_print_results(directory, target_stats, mode):
     cycles, maa_cycles, maa_indirect_cycles, cache_stats, instruction_types = parse_gem5_stats(stats, mode, target_stats)
     logs = f"{directory}/logs_run.txt"
     DRAM_RD, DRAM_WR, DRAM_ACT, DRAM_RD_BW, DRAM_WR_BW, DRAM_total_BW, DRAM_RB_hitrate, DRAM_CTRL_occ, DRAM_PRE_STBY_ENERGY, DRAM_ACT_STBY_ENERGY, DRAM_ACTPRE_ENERGY, DRAM_RD_ENERGY, DRAM_WR_ENERGY, DRAM_DQ_ENERGY, total_DRAM_energy = parse_ramulator_stats(logs, target_stats)
+    core_static_power, core_dynamic_power, core_power, llc_static_power, llc_dynamic_power, llc_power, core_static_energy, core_dynamic_energy, core_energy, llc_static_energy, llc_dynamic_energy, llc_energy = parse_mcpat_stats(directory, target_stats, cycles / CORE_FREQUENCY)
     print(f"{cycles}", end=",")
     for maa_cycle in all_maa_cycles:
         print(maa_cycles[maa_cycle], end=",")
@@ -454,6 +506,7 @@ def get_print_results(directory, target_stats, mode):
     else:
         print(((instruction_types["LDINT"] + instruction_types["LDFP"]) * cache_stats["Avg-T-Latency"]) / cycles, end=",")
     print(f"{DRAM_RD},{DRAM_WR},{DRAM_ACT},{DRAM_RD_BW},{DRAM_WR_BW},{DRAM_total_BW},{DRAM_RB_hitrate},{DRAM_CTRL_occ},{DRAM_PRE_STBY_ENERGY},{DRAM_ACT_STBY_ENERGY},{DRAM_ACTPRE_ENERGY},{DRAM_RD_ENERGY},{DRAM_WR_ENERGY},{DRAM_DQ_ENERGY},{total_DRAM_energy}", end=",")
+    print(f"{core_static_power},{core_dynamic_power},{core_power},{llc_static_power},{llc_dynamic_power},{llc_power},{core_static_energy},{core_dynamic_energy},{core_energy},{llc_static_energy},{llc_dynamic_energy},{llc_energy}", end=",")
     print()
 
 if directory[-1] == "/":

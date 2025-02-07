@@ -1,55 +1,185 @@
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bfs/MAA/22 --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bfs/MAANO/22 --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bfs/BASE/22 --mode base --target 1
-# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bfs/DMP/22 --mode base --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/pr/MAA/22 --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/pr/MAANO/22 --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/pr/BASE/22 --mode base --target 1
-# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/pr/DMP/22 --mode base --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/sssp/MAA/22 --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/sssp/MAANO/22 --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/sssp/BASE/22 --mode base --target 1
-# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/sssp/DMP/22 --mode base --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bc/MAA/20 --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bc/MAANO/20 --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bc/BASE/20 --mode base --target 1
-# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bc/DMP/22 --mode base --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/isb/MAA --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/isb/MAANO --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/isb/BASE --mode base --target 1
-# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/isb/DMP --mode base --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/cgc/MAA/ --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/cgc/MAANO/ --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/cgc/BASE/ --mode base --target 1
-# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/cgc/DMP/ --mode base --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/MAA/2M --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/MAANO/2M --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/BASE/2M --mode base --target 1
-# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/DMP/2M --mode base --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/MAA/2M --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/MAANO/2M --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/BASE/2M --mode base --target 1
-# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/DMP/2M --mode base --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/MAA --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/MAANO --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/BASE --mode base --target 1
-# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/DMP --mode base --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/MAA/2M --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/MAANO/2M --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/BASE/2M --mode base --target 1
-# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/DMP/2M --mode base --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/MAA/2M --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/MAANO/2M --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/BASE/2M --mode base --target 1
-# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/DMP/2M --mode base --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/MAA/2M --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/MAANO/2M --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/BASE/2M --mode base --target 1
-# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/DMP/2M --mode base --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/MAA/2M --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/MAANO/2M --mode maa --target 1
-python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/BASE/2M --mode base --target 1
-# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/DMP/2M --mode base --target 1
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bfs/MAA/22 --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/bfs/MAA/22/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bfs/MAANO/22 --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/bfs/MAANO/22/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bfs/BASE/22 --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/bfs/BASE/22/results.txt &
+# # python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bfs/DMP/22 --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/bfs/DMP/22/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/pr/MAA/22 --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/pr/MAA/22/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/pr/MAANO/22 --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/pr/MAANO/22/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/pr/BASE/22 --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/pr/BASE/22/results.txt &
+# # python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/pr/DMP/22 --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/pr/DMP/22/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/sssp/MAA/22 --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/sssp/MAA/22/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/sssp/MAANO/22 --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/sssp/MAANO/22/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/sssp/BASE/22 --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/sssp/BASE/22/results.txt &
+# # python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/sssp/DMP/22 --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/sssp/DMP/22/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bc/MAA/20 --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/bc/MAA/20/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bc/MAANO/20 --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/bc/MAANO/20/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bc/BASE/20 --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/bc/BASE/20/results.txt &
+# # python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bc/DMP/22 --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/bc/DMP/22/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/isb/MAA --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/isb/MAA/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/isb/MAANO --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/isb/MAANO/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/isb/BASE --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/isb/BASE/results.txt &
+# # python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/isb/DMP --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/isb/DMP/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/cgc/MAA/ --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/cgc/MAA//results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/cgc/MAANO/ --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/cgc/MAANO//results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/cgc/BASE/ --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/cgc/BASE//results.txt &
+# # python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/cgc/DMP/ --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/cgc/DMP//results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/MAA/2M --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/MAA/2M/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/MAANO/2M --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/MAANO/2M/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/BASE/2M --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/BASE/2M/results.txt &
+# # python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/DMP/2M --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/DMP/2M/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/MAA/2M --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/MAA/2M/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/MAANO/2M --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/MAANO/2M/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/BASE/2M --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/BASE/2M/results.txt &
+# # python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/DMP/2M --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/DMP/2M/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/MAA --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/MAA/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/MAANO --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/MAANO/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/BASE --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/BASE/results.txt &
+# # python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/DMP --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/DMP/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/MAA/2M --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/MAA/2M/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/MAANO/2M --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/MAANO/2M/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/BASE/2M --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/BASE/2M/results.txt &
+# # python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/DMP/2M --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/DMP/2M/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/MAA/2M --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/MAA/2M/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/MAANO/2M --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/MAANO/2M/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/BASE/2M --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/BASE/2M/results.txt &
+# # python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/DMP/2M --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/DMP/2M/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/MAA/2M --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/MAA/2M/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/MAANO/2M --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/MAANO/2M/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/BASE/2M --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/BASE/2M/results.txt &
+# # python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/DMP/2M --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/DMP/2M/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/MAA/2M --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/MAA/2M/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/MAANO/2M --mode maa --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/MAANO/2M/results.txt &
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/BASE/2M --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/BASE/2M/results.txt &
+# # python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/DMP/2M --mode base --target 1 &> /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/DMP/2M/results.txt &
+
+
+
+
+
+
+
+
+
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bfs/MAA/22 --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bfs/MAANO/22 --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bfs/BASE/22 --mode base --target 1 --no_mcpat_run
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bfs/DMP/22 --mode base --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/pr/MAA/22 --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/pr/MAANO/22 --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/pr/BASE/22 --mode base --target 1 --no_mcpat_run
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/pr/DMP/22 --mode base --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/sssp/MAA/22 --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/sssp/MAANO/22 --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/sssp/BASE/22 --mode base --target 1 --no_mcpat_run
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/sssp/DMP/22 --mode base --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bc/MAA/20 --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bc/MAANO/20 --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bc/BASE/20 --mode base --target 1 --no_mcpat_run
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/bc/DMP/22 --mode base --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/isb/MAA --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/isb/MAANO --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/isb/BASE --mode base --target 1 --no_mcpat_run
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/isb/DMP --mode base --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/cgc/MAA/ --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/cgc/MAANO/ --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/cgc/BASE/ --mode base --target 1 --no_mcpat_run
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/cgc/DMP/ --mode base --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/MAA/2M --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/MAANO/2M --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/BASE/2M --mode base --target 1 --no_mcpat_run
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/DMP/2M --mode base --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/MAA/2M --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/MAANO/2M --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/BASE/2M --mode base --target 1 --no_mcpat_run
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/DMP/2M --mode base --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/MAA --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/MAANO --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/BASE --mode base --target 1 --no_mcpat_run
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/DMP --mode base --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/MAA/2M --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/MAANO/2M --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/BASE/2M --mode base --target 1 --no_mcpat_run
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/DMP/2M --mode base --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/MAA/2M --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/MAANO/2M --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/BASE/2M --mode base --target 1 --no_mcpat_run
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/DMP/2M --mode base --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/MAA/2M --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/MAANO/2M --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/BASE/2M --mode base --target 1 --no_mcpat_run
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/DMP/2M --mode base --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/MAA/2M --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/MAANO/2M --mode maa --target 1 --no_mcpat_run
+python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/BASE/2M --mode base --target 1 --no_mcpat_run
+# python configs/parse_gem5.py --dir /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/DMP/2M --mode base --target 1 --no_mcpat_run
+
+
+
+
+
+
+
+
+
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/bfs/MAA/22/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/bfs/MAANO/22/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/bfs/BASE/22/results.txt
+# #/data4/arkhadem/gem5-hpc/results_rebuttal/bfs/DMP/22/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/pr/MAA/22/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/pr/MAANO/22/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/pr/BASE/22/results.txt
+# #/data4/arkhadem/gem5-hpc/results_rebuttal/pr/DMP/22/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/sssp/MAA/22/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/sssp/MAANO/22/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/sssp/BASE/22/results.txt
+# #/data4/arkhadem/gem5-hpc/results_rebuttal/sssp/DMP/22/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/bc/MAA/20/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/bc/MAANO/20/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/bc/BASE/20/results.txt
+# #/data4/arkhadem/gem5-hpc/results_rebuttal/bc/DMP/22/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/isb/MAA/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/isb/MAANO/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/isb/BASE/results.txt
+# #/data4/arkhadem/gem5-hpc/results_rebuttal/isb/DMP/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/cgc/MAA//results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/cgc/MAANO//results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/cgc/BASE//results.txt
+# #/data4/arkhadem/gem5-hpc/results_rebuttal/cgc/DMP//results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/MAA/2M/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/MAANO/2M/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/BASE/2M/results.txt
+# #/data4/arkhadem/gem5-hpc/results_rebuttal/PRH_OMP/DMP/2M/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/MAA/2M/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/MAANO/2M/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/BASE/2M/results.txt
+# #/data4/arkhadem/gem5-hpc/results_rebuttal/PRO_OMP/DMP/2M/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/MAA/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/MAANO/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/BASE/results.txt
+# #/data4/arkhadem/gem5-hpc/results_rebuttal/spatter/xrage/DMP/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/MAA/2M/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/MAANO/2M/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/BASE/2M/results.txt
+# #/data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp/DMP/2M/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/MAA/2M/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/MAANO/2M/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/BASE/2M/results.txt
+# #/data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz/DMP/2M/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/MAA/2M/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/MAANO/2M/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/BASE/2M/results.txt
+# #/data4/arkhadem/gem5-hpc/results_rebuttal/gradzatp_invert/DMP/2M/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/MAA/2M/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/MAANO/2M/results.txt
+# cat /data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/BASE/2M/results.txt
+# #/data4/arkhadem/gem5-hpc/results_rebuttal/gradzatz_invert/DMP/2M/results.txt
+
+
+
+
+
+
+
+
 
 # I0_IND_AvgWordsPerCacheLine
 # I0_IND_AvgCacheLinesPerRow
