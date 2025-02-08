@@ -61,6 +61,7 @@ MAA::MAA(const MAAParams &p)
       num_row_table_config_cache_entries(p.num_row_table_config_cache_entries),
       reconfigure_row_table(p.reconfigure_row_table),
       reorder_row_table(p.no_reorder == false ? true : false),
+      force_cache_access(p.force_cache_access),
       num_initial_row_table_slices(p.num_initial_row_table_slices),
       num_request_table_addresses(p.num_request_table_addresses),
       num_request_table_entries_per_address(p.num_request_table_entries_per_address),
@@ -75,7 +76,7 @@ MAA::MAA(const MAAParams &p)
       issueInstructionEvent([this] { issueInstruction(); }, name()),
       dispatchInstructionEvent([this] { dispatchInstruction(); }, name()),
       dispatchRegisterEvent([this] { dispatchRegister(); }, name()),
-      stats(this, p.num_indirect_access_units, p.num_stream_access_units, p.num_range_units, p.num_alu_units),
+      stats(this, p.num_indirect_access_units, p.num_stream_access_units, p.num_range_units, p.num_alu_units, this),
       sendCacheEvent([this] { sendOutstandingCachePacket(); }, name()),
       sendMemEvent([this] { sendOutstandingMemPacket(); }, name()) {
 
@@ -151,6 +152,9 @@ MAA::MAA(const MAAParams &p)
         cpuSidePorts[i]->allocate(i, p.max_outstanding_cpu_side_packets);
     }
     lastCacheSidePortSend = 0;
+
+    my_last_idle_tick = curTick();
+    my_last_reset_tick = curTick();
 }
 
 void MAA::init() {
@@ -693,6 +697,7 @@ Tick MAA::getCyclesToTicks(Cycles c) const {
 }
 void MAA::resetStats() {
     my_last_idle_tick = curTick();
+    my_last_reset_tick = curTick();
     printf("Resetting MAA stats\n");
     ClockedObject::resetStats();
     printf("NumInst after reset: %lf\n", stats.numInst.value());
@@ -713,12 +718,25 @@ void MAA::resetStats() {
 #define MAKE_INVALIDATOR_STAT_NAME(name) \
     (std::string("INV_") + std::string(name)).c_str()
 
+Tick MAA::getCurTick() {
+    return curTick();
+}
+
+void MAA::MAAStats::preDumpStats() {
+    statistics::Group::preDumpStats();
+
+    cycles_TOTAL = maa->getTicksToCycles(maa->getCurTick() - maa->my_last_reset_tick);
+    if (maa->allFuncUnitsIdle())
+        cycles_IDLE += maa->getTicksToCycles(maa->getCurTick() - maa->my_last_idle_tick);
+}
 MAA::MAAStats::MAAStats(statistics::Group *parent,
                         int num_indirect_access_units,
                         int num_stream_access_units,
                         int num_range_units,
-                        int num_alu_units)
+                        int num_alu_units,
+                        MAA *_maa)
     : statistics::Group(parent),
+      maa(_maa),
       ADD_STAT(numInst_INDRD, statistics::units::Count::get(), "number of indirect read instructions"),
       ADD_STAT(numInst_INDWR, statistics::units::Count::get(), "number of indirect write instructions"),
       ADD_STAT(numInst_INDRMW, statistics::units::Count::get(), "number of indirect read-modify-write instructions"),
@@ -741,6 +759,8 @@ MAA::MAAStats::MAAStats(statistics::Group *parent,
       ADD_STAT(cycles_ALUR, statistics::units::Count::get(), "number of ALU Reduction instruction cycles"),
       ADD_STAT(cycles_INV, statistics::units::Count::get(), "number of Invalidation for instruction cycles"),
       ADD_STAT(cycles_IDLE, statistics::units::Count::get(), "number of idle cycles"),
+      ADD_STAT(cycles_BUSY, statistics::units::Count::get(), "number of busy cycles"),
+      ADD_STAT(cycles_TOTAL, statistics::units::Count::get(), "number of total cycles"),
       ADD_STAT(cycles, statistics::units::Count::get(), "total number of instruction cycles"),
       ADD_STAT(avgCPI_INDRD, statistics::units::Count::get(), "average CPI for indirect read instructions"),
       ADD_STAT(avgCPI_INDWR, statistics::units::Count::get(), "average CPI for indirect write instructions"),
@@ -752,7 +772,19 @@ MAA::MAAStats::MAAStats(statistics::Group *parent,
       ADD_STAT(avgCPI_ALUV, statistics::units::Count::get(), "average CPI for ALU Vector instructions"),
       ADD_STAT(avgCPI_ALUR, statistics::units::Count::get(), "average CPI for ALU Reduction instructions"),
       ADD_STAT(avgCPI_INV, statistics::units::Count::get(), "average CPI for Invalidation for instructions"),
-      ADD_STAT(avgCPI, statistics::units::Count::get(), "average CPI for all instructions") {
+      ADD_STAT(avgCPI, statistics::units::Count::get(), "average CPI for all instructions"),
+      ADD_STAT(port_cache_WR_packets, statistics::units::Count::get(), "number of cache write packets"),
+      ADD_STAT(port_cache_RD_packets, statistics::units::Count::get(), "number of cache read packets"),
+      ADD_STAT(port_mem_WR_packets, statistics::units::Count::get(), "number of memory write packets"),
+      ADD_STAT(port_mem_RD_packets, statistics::units::Count::get(), "number of memory read packets"),
+      ADD_STAT(port_cache_packets, statistics::units::Count::get(), "number of cache packets"),
+      ADD_STAT(port_mem_packets, statistics::units::Count::get(), "number of memory packets"),
+      ADD_STAT(port_cache_WR_BW, statistics::units::Count::get(), "cache write bandwidth (GB/s)"),
+      ADD_STAT(port_cache_RD_BW, statistics::units::Count::get(), "cache read bandwidth (GB/s)"),
+      ADD_STAT(port_cache_BW, statistics::units::Count::get(), "cache total bandwidth (GB/s)"),
+      ADD_STAT(port_mem_WR_BW, statistics::units::Count::get(), "memory write bandwidth (GB/s)"),
+      ADD_STAT(port_mem_RD_BW, statistics::units::Count::get(), "memory read bandwidth (GB/s)"),
+      ADD_STAT(port_mem_BW, statistics::units::Count::get(), "memory total bandwidth (GB/s)") {
 
     numInst_INDRD.flags(statistics::nozero);
     numInst_INDWR.flags(statistics::nozero);
@@ -776,8 +808,14 @@ MAA::MAAStats::MAAStats(statistics::Group *parent,
     cycles_ALUR.flags(statistics::nozero);
     cycles_INV.flags(statistics::nozero);
     cycles_IDLE.flags(statistics::nozero);
+    cycles_TOTAL.flags(statistics::nozero);
     cycles.flags(statistics::nozero);
+    port_cache_WR_packets.flags(statistics::nozero);
+    port_cache_RD_packets.flags(statistics::nozero);
+    port_mem_WR_packets.flags(statistics::nozero);
+    port_mem_RD_packets.flags(statistics::nozero);
 
+    cycles_BUSY = cycles_TOTAL - cycles_IDLE;
     avgCPI_INDRD = cycles_INDRD / numInst_INDRD;
     avgCPI_INDWR = cycles_INDWR / numInst_INDWR;
     avgCPI_INDRMW = cycles_INDRMW / numInst_INDRMW;
@@ -788,8 +826,17 @@ MAA::MAAStats::MAAStats(statistics::Group *parent,
     avgCPI_ALUV = cycles_ALUV / numInst_ALUV;
     avgCPI_ALUR = cycles_ALUR / numInst_ALUR;
     avgCPI_INV = cycles_INV / numInst_INV;
-    avgCPI = cycles / numInst;
+    avgCPI = cycles_TOTAL / numInst;
+    port_cache_packets = port_cache_WR_packets + port_cache_RD_packets;
+    port_mem_packets = port_mem_WR_packets + port_mem_RD_packets;
+    port_cache_WR_BW = port_cache_WR_packets * 64 / (cycles_TOTAL / 3.2);
+    port_cache_RD_BW = port_cache_RD_packets * 64 / (cycles_TOTAL / 3.2);
+    port_cache_BW = port_cache_packets * 64 / (cycles_TOTAL / 3.2);
+    port_mem_WR_BW = port_mem_WR_packets * 64 / (cycles_TOTAL / 3.2);
+    port_mem_RD_BW = port_mem_RD_packets * 64 / (cycles_TOTAL / 3.2);
+    port_mem_BW = port_mem_packets * 64 / (cycles_TOTAL / 3.2);
 
+    cycles_BUSY.flags(statistics::nonan | statistics::nozero);
     avgCPI_INDRD.flags(statistics::nonan | statistics::nozero);
     avgCPI_INDWR.flags(statistics::nonan | statistics::nozero);
     avgCPI_INDRMW.flags(statistics::nonan | statistics::nozero);
@@ -801,6 +848,12 @@ MAA::MAAStats::MAAStats(statistics::Group *parent,
     avgCPI_ALUR.flags(statistics::nonan | statistics::nozero);
     avgCPI_INV.flags(statistics::nonan | statistics::nozero);
     avgCPI.flags(statistics::nonan | statistics::nozero);
+    port_cache_WR_BW.flags(statistics::nonan | statistics::nozero);
+    port_cache_RD_BW.flags(statistics::nonan | statistics::nozero);
+    port_cache_BW.flags(statistics::nonan | statistics::nozero);
+    port_mem_WR_BW.flags(statistics::nonan | statistics::nozero);
+    port_mem_RD_BW.flags(statistics::nonan | statistics::nozero);
+    port_mem_BW.flags(statistics::nonan | statistics::nozero);
 
     for (int indirect_id = 0; indirect_id < num_indirect_access_units; indirect_id++) {
         IND_NumInsts.push_back(new statistics::Scalar(this, MAKE_INDIRECT_STAT_NAME("IND_NumInsts"), statistics::units::Count::get(), "number of instructions"));

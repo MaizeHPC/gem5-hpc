@@ -401,6 +401,7 @@ public:
     unsigned int num_row_table_config_cache_entries;
     bool reconfigure_row_table;
     bool reorder_row_table;
+    bool force_cache_access;
     unsigned int num_initial_row_table_slices;
     unsigned int num_request_table_addresses;
     unsigned int num_request_table_entries_per_address;
@@ -451,7 +452,6 @@ protected:
     std::vector<PacketPtr> my_ready_pkts;
     std::vector<RegisterPtr> my_registers;
     std::vector<PacketPtr> my_register_pkts;
-    Tick my_last_idle_tick;
     std::vector<int> my_ready_tile_ids;
     std::vector<InstructionPtr> my_instructions;
     uint8_t getTileStatus(InstructionPtr instruction, int tile_id, bool is_dst);
@@ -462,7 +462,6 @@ protected:
     void scheduleIssueInstructionEvent(int latency = 0);
     void scheduleDispatchInstructionEvent(int latency = 0);
     void scheduleDispatchRegisterEvent(int latency = 0);
-    bool allFuncUnitsIdle();
     bool *streamAccessIdle;
     bool *indirectAccessIdle;
     bool *aluUnitsIdle;
@@ -472,12 +471,22 @@ protected:
     std::unique_ptr<Packet> pendingDelete;
 
 public:
+    Tick my_last_idle_tick;
+    Tick my_last_reset_tick;
+    bool allFuncUnitsIdle();
+    Tick getCurTick();
+
+public:
     struct MAAStats : public statistics::Group {
         MAAStats(statistics::Group *parent,
                  int num_indirect_access_units,
                  int num_stream_access_units,
                  int num_range_units,
-                 int num_alu_units);
+                 int num_alu_units,
+                 MAA *_maa);
+
+        MAA *maa;
+        void preDumpStats() override;
 
         /** Number of instructions. */
         statistics::Scalar numInst_INDRD;
@@ -504,6 +513,8 @@ public:
         statistics::Scalar cycles_ALUR;
         statistics::Scalar cycles_INV;
         statistics::Scalar cycles_IDLE;
+        statistics::Formula cycles_BUSY;
+        statistics::Scalar cycles_TOTAL;
         statistics::Scalar cycles;
 
         /** Average cycles per instruction. */
@@ -518,6 +529,20 @@ public:
         statistics::Formula avgCPI_ALUR;
         statistics::Formula avgCPI_INV;
         statistics::Formula avgCPI;
+
+        /** Port statistics */
+        statistics::Scalar port_cache_WR_packets;
+        statistics::Scalar port_cache_RD_packets;
+        statistics::Scalar port_mem_WR_packets;
+        statistics::Scalar port_mem_RD_packets;
+        statistics::Formula port_cache_packets;
+        statistics::Formula port_mem_packets;
+        statistics::Formula port_cache_WR_BW;
+        statistics::Formula port_cache_RD_BW;
+        statistics::Formula port_cache_BW;
+        statistics::Formula port_mem_WR_BW;
+        statistics::Formula port_mem_RD_BW;
+        statistics::Formula port_mem_BW;
 
         /** Indirect Unit -- Row-Table Statistics. */
         std::vector<statistics::Scalar *> IND_NumInsts;

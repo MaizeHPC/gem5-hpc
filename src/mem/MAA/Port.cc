@@ -32,7 +32,7 @@ void MAA::sendPacket(FuncUnitType funcUnit, PacketPtr pkt, Tick tick, bool force
                                                      pkt->req->getFlags(),
                                                      pkt->req->requestorId());
     bool isBlockCached = true;
-    if (force_cache == false) {
+    if (force_cache_access == false && force_cache == false) {
         PacketPtr snoop_pkt = new Packet(snoop_req, MemCmd::SnoopReq);
         snoop_pkt->setExpressSnoop();
         snoop_pkt->headerDelay = snoop_pkt->payloadDelay = 0;
@@ -250,6 +250,7 @@ bool MAA::sendOutstandingMemPacket() {
         } else {
             it = my_outstanding_indirect_mem_write_pkts.erase(it);
             indirectAccessUnits[0].memWritePacketSent(write_pkt.packet);
+            stats.port_mem_WR_packets += 1;
             continue;
         }
     }
@@ -274,6 +275,7 @@ bool MAA::sendOutstandingMemPacket() {
         } else {
             it = my_outstanding_indirect_mem_read_pkts.erase(it);
             indirectAccessUnits[0].memReadPacketSent(read_pkt.packet);
+            stats.port_mem_RD_packets += 1;
             continue;
         }
     }
@@ -302,6 +304,7 @@ bool MAA::sendOutstandingCachePacket() {
         } else {
             my_outstanding_indirect_cache_write_pkts.erase(my_outstanding_indirect_cache_write_pkts.begin());
             indirectAccessUnits[0].cacheWritePacketSent(write_pkt.packet);
+            stats.port_cache_WR_packets += 1;
             continue;
         }
     }
@@ -320,6 +323,7 @@ bool MAA::sendOutstandingCachePacket() {
         } else {
             my_outstanding_indirect_cache_read_pkts.erase(my_outstanding_indirect_cache_read_pkts.begin());
             indirectAccessUnits[0].cacheReadPacketSent(read_pkt.packet);
+            stats.port_cache_RD_packets += 1;
             continue;
         }
     }
@@ -338,6 +342,7 @@ bool MAA::sendOutstandingCachePacket() {
         } else {
             my_outstanding_stream_cache_write_pkts.erase(my_outstanding_stream_cache_write_pkts.begin());
             streamAccessUnits[0].writePacketSent(write_pkt.packet);
+            stats.port_cache_WR_packets += 1;
             continue;
         }
     }
@@ -356,6 +361,7 @@ bool MAA::sendOutstandingCachePacket() {
         } else {
             my_outstanding_stream_cache_read_pkts.erase(my_outstanding_stream_cache_read_pkts.begin());
             streamAccessUnits[0].readPacketSent(read_pkt.packet);
+            stats.port_cache_RD_packets += 1;
             continue;
         }
     }
@@ -375,6 +381,7 @@ bool MAA::sendOutstandingCachePacket() {
             } else {
                 my_outstanding_stream_mem_write_pkts.erase(my_outstanding_stream_mem_write_pkts.begin());
                 streamAccessUnits[0].writePacketSent(write_pkt.packet);
+                stats.port_cache_WR_packets += 1;
                 continue;
             }
         }
@@ -393,6 +400,7 @@ bool MAA::sendOutstandingCachePacket() {
             } else {
                 my_outstanding_stream_mem_read_pkts.erase(my_outstanding_stream_mem_read_pkts.begin());
                 streamAccessUnits[0].readPacketSent(read_pkt.packet);
+                stats.port_cache_RD_packets += 1;
                 continue;
             }
         }

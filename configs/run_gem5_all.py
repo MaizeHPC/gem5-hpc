@@ -5,9 +5,25 @@ from threading import Thread, Lock
 parallelism = 32
 GEM5_DIR = "/home/arkhadem/gem5-hpc"
 DATA_DIR = "/data4/arkhadem/gem5-hpc"
-CPT_DIR = f"{DATA_DIR}/checkpoints_rebuttal"
-RSLT_DIR = f"{DATA_DIR}/results_rebuttal"
+CPT_DIR = f"{DATA_DIR}/checkpoints_rebuttal_new"
+RSLT_DIR = f"{DATA_DIR}/results_rebuttal_new"
+RC_CPT_DIR = f"{DATA_DIR}/checkpoints_rebuttal_RC_new"
+RC_RSLT_DIR = f"{DATA_DIR}/results_rebuttal_RC_new"
+TS_CPT_DIR = f"{DATA_DIR}/checkpoints_rebuttal_TS_new"
+TS_RSLT_DIR = f"{DATA_DIR}/results_rebuttal_TS_new"
 LOG_DIR = f"{DATA_DIR}/logs"
+
+all_MAA_configs = [{"do_reorder": True, "force_cache": False},
+                   {"do_reorder": False, "force_cache": False},
+                   {"do_reorder": True, "force_cache": True},
+                   {"do_reorder": False, "force_cache": True}]
+
+all_tile_sizes = [1024, 2048, 4096, 8192, 16384]
+all_tile_sizes_str = ["1K", "2K", "4K", "8K", "16K"]
+
+DO_GENERAL_EXP = True
+DO_REORDER_FORCE_CACHE_EXP = True
+DO_TILE_SIZE_EXP = True
 
 os.system("mkdir -p " + LOG_DIR)
 
@@ -100,7 +116,19 @@ def add_command_checkpoint(directory, command, options, num_cores = 4):
     tasks.append(task)
     return len(tasks) - 1
 
-def add_command_run_MAA(directory, checkpoint, checkpoint_id, command, options, mode, tile_size = 16384, reconfigurable_RT = False, maa_warmer = False, num_cores = 4, do_prefetch = True, do_reorder = True):
+def add_command_run_MAA(directory,
+                        checkpoint,
+                        checkpoint_id,
+                        command,
+                        options,
+                        mode,
+                        tile_size = 16384,
+                        reconfigurable_RT = False,
+                        maa_warmer = False,
+                        num_cores = 4,
+                        do_prefetch = True,
+                        do_reorder = True,
+                        force_cache = False):
     have_maa = False
     l2_hwp_type = "StridePrefetcher"
     l3_size = "8MB"
@@ -169,6 +197,8 @@ def add_command_run_MAA(directory, checkpoint, checkpoint_id, command, options, 
         COMMAND += "--maa_num_initial_row_table_slices 32 "
         if do_reorder == False:
             COMMAND += "--maa_no_reorder "
+        if force_cache == True:
+            COMMAND += "--maa_force_cache_access "
     COMMAND += f"--cmd {command} "
     COMMAND += f"--options \"{options}\" "
     if checkpoint != None:
@@ -313,230 +343,6 @@ def add_command_run_MAA(directory, checkpoint, checkpoint_id, command, options, 
 #                             num_cores=4,
 #                             do_reorder=False)
 
-########################################## NAS ##########################################
-# checkpoint_id = None
-# checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/cga/MAA",
-#                                         command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/NAS/NPB3.4-OMP/CG_CPP/B.16384",
-#                                         options=f"MAA")
-# add_command_run_MAA(directory=f"{RSLT_DIR}/cga/MAA",
-#                     checkpoint=f"{CPT_DIR}/cga/MAA",
-#                     checkpoint_id = checkpoint_id,
-#                     command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/NAS/NPB3.4-OMP/CG_CPP/B.16384",
-#                     options=f"MAA",
-#                     mode="MAA")
-
-# all_kernels = ["isb"] #, "cgc"] # , "isc", "cgb", "cgc"] #, "isa", "isb"]
-                 
-# all_test_dirs = {"cga": "NAS/NPB3.4-OMP/CG_CPP",
-#                  "cgb": "NAS/NPB3.4-OMP/CG_CPP",
-#                  "cgc": "NAS/NPB3.4-OMP/CG_CPP",
-#                  "isa": "NAS/NPB3.4-OMP/IS",
-#                  "isb": "NAS/NPB3.4-OMP/IS",
-#                  "isc": "NAS/NPB3.4-OMP/IS"}
-
-# all_file_names = {"cga": "A.16384",
-#                  "cgb": "B.16384",
-#                  "cgc": "C.16384",
-#                  "isa": "A.16384",
-#                  "isb": "B.16384",
-#                  "isc": "C.16384"}
-
-# all_modes = ["BASE", "MAA", "MAANO"] #, "DMP"
-
-# for kernel in all_kernels:
-#     for mode in all_modes:
-#         test_dir = all_test_dirs[kernel]
-#         file_name = all_file_names[kernel]
-#         checkpoint_id = None
-#         option = "BASE" if mode == "DMP" else "MAA" if mode == "MAANO" else mode
-#         checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/{kernel}/{mode}",
-#                                                 command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/{test_dir}/{file_name}",
-#                                                 options=option)
-#         add_command_run_MAA(directory=f"{RSLT_DIR}/{kernel}/{mode}",
-#                             checkpoint=f"{CPT_DIR}/{kernel}/{mode}",
-#                             checkpoint_id = checkpoint_id,
-#                             command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/{test_dir}/{file_name}",
-#                             options=option,
-#                             mode="MAA" if mode == "MAANO" else mode,
-#                             do_reorder=False if mode == "MAANO" else True)
-        
-########################################## GAPB ##########################################
-
-# add_command_run_MAA(directory=f"{RSLT_DIR}/sssp/MAA/22",
-#                     checkpoint=f"{CPT_DIR}/sssp/MAA/22",
-#                     checkpoint_id = None,
-#                     command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/sssp_maa",
-#                     options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_22.wsg -l -n 1",
-#                     mode="MAA",
-#                     do_reorder=True)
-
-# add_command_run_MAA(directory=f"{RSLT_DIR}/bc/MAA/22",
-#                     checkpoint=f"{CPT_DIR}/bc/MAA/22",
-#                     checkpoint_id = None,
-#                     command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/bc_maa",
-#                     options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_22.sg -l -n 1",
-#                     mode="MAA",
-#                     do_reorder=True)
-
-# add_command_run_MAA(directory=f"{RSLT_DIR}/bc/MAANO/22",
-#                     checkpoint=f"{CPT_DIR}/bc/MAANO/22",
-#                     checkpoint_id = None,
-#                     command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/bc_maa",
-#                     options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_22.sg -l -n 1",
-#                     mode="MAA",
-#                     do_reorder=False)
-
-# all_modes = ["BASE", "MAA", "MAANO"] #, "DMP", "BASE"
-# all_kernels = ["bc"] # ["bfs", "pr", "bc", "sssp"]
-# for kernel in all_kernels:
-#     for mode in all_modes:
-#         for size in [20, 22]:
-#             file_name = f"{kernel}_maa" if (mode == "MAA" or mode == "MAANO") else f"{kernel}"
-#             graph_ext = "wsg" if kernel == "sssp" else "sg"
-#             checkpoint_id = None
-#             checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/{kernel}/{mode}/{size}",
-#                                                     command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
-#                                                     options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1")
-#             add_command_run_MAA(directory=f"{RSLT_DIR}/{kernel}/{mode}/{size}",
-#                                 checkpoint=f"{CPT_DIR}/{kernel}/{mode}/{size}",
-#                                 checkpoint_id = checkpoint_id,
-#                                 command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
-#                                 options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
-#                                 mode="MAA" if mode == "MAANO" else mode,
-#                                 do_reorder=False if mode == "MAANO" else True)
-
-# ########################################## SPATTER ##########################################
-# add_command_run_MAA(directory=f"{RSLT_DIR}/spatter/flag/MAA",
-#                     checkpoint=f"{CPT_DIR}/spatter/flag/MAA",
-#                     checkpoint_id = None,
-#                     command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/build/spatter_maa",
-#                     options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/tests/test-data/flag/all.json",
-#                     mode="MAA")
-
-# all_modes = ["BASE", "MAA", "MAANO"] #, "DMP"
-# all_kernels = ["xrage", "flag"]
-# for kernel in all_kernels:
-#     for mode in all_modes:
-#         file_name = None
-#         if mode == "BASE" or mode == "DMP":
-#             file_name = f"spatter_base"
-#         elif mode == "MAA" or mode == "MAANO":
-#             file_name = f"spatter_maa"
-        
-#         checkpoint_id = None
-#         checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/spatter/{kernel}/{mode}",
-#                                                 command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/build/{file_name}",
-#                                                 options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/tests/test-data/{kernel}/all.json")
-#         add_command_run_MAA(directory=f"{RSLT_DIR}/spatter/{kernel}/{mode}",
-#                             checkpoint=f"{CPT_DIR}/spatter/{kernel}/{mode}",
-#                             checkpoint_id = checkpoint_id,
-#                             command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/build/{file_name}",
-#                             options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/tests/test-data/{kernel}/all.json",
-#                             mode="MAA" if mode == "MAANO" else mode,
-#                             do_reorder=False if mode == "MAANO" else True)
-
-# ######################################### HASHJOIN ##########################################
-
-# checkpoint_id = None
-# checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/PRO/MAA",
-#                                         command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-ph-2/src/bin/x86/hj_maa",
-#                                         options=f"-a PRO -n 4 -r 2000000 -s 2000000",
-#                                         num_cores=5)
-# add_command_run_MAA(directory=f"{RSLT_DIR}/PRO/MAA",
-#                     checkpoint=f"{CPT_DIR}/PRO/MAA",
-#                     checkpoint_id = checkpoint_id,
-#                     command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-ph-2/src/bin/x86/hj_maa",
-#                     options=f"-a PRO -n 4 -r 2000000 -s 2000000",
-#                     mode="MAA",
-#                     num_cores=5)
-
-
-# os.system(f"cp {GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-ph-2/relR_2M.dat ./")
-# os.system(f"cp {GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-ph-2/relS_2M.dat ./")
-# os.system(f"cp {GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-ph-2/relR_8M.dat ./")
-# os.system(f"cp {GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-ph-2/relS_8M.dat ./")
-
-# all_modes = ["MAA", "MAANO"] # ["BASE", "MAA", "MAANO"] #, "DMP"
-# all_kernels = ["PRH", "PRO"]
-# all_sizes = [200000, 2000000] # [2000000] # , 8000000]
-# all_sizes_str = ["200K", "2M"] # ["2M"] # , "8M"]
-# for kernel in all_kernels:
-#     for mode in all_modes:
-#         for size, size_str in zip(all_sizes, all_sizes_str):
-#             file_name = None
-#             if mode == "BASE":
-#                 file_name = f"hj_base"
-#             if mode == "DMP":
-#                 file_name = f"hj_base"
-#             if mode == "MAA" or mode == "MAANO":
-#                 file_name = f"hj_maa"
-            
-#             checkpoint_id = None
-#             checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/{kernel}/{mode}/{size_str}",
-#                                                     command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-ph-2/src/bin/x86/{file_name}",
-#                                                     options=f"-a {kernel} -n 4 -r {size} -s {size}",
-#                                                     num_cores=5)
-#             add_command_run_MAA(directory=f"{RSLT_DIR}/{kernel}/{mode}/{size_str}",
-#                                 checkpoint=f"{CPT_DIR}/{kernel}/{mode}/{size_str}",
-#                                 checkpoint_id = checkpoint_id,
-#                                 command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-ph-2/src/bin/x86/{file_name}",
-#                                 options=f"-a {kernel} -n 4 -r {size} -s {size}",
-#                                 mode="MAA" if mode == "MAANO" else mode,
-#                                 do_reorder=False if mode == "MAANO" else True,
-#                                 num_cores=5)
-
-all_modes = ["MAANO","MAA"] #,"BASE"] #, "DMP"
-all_kernels = ["PRH", "PRO"]
-all_sizes = [200000, 2000000] # [2000000] # , 8000000]
-all_sizes_str = ["200K", "2M"] # ["2M"] # , "8M"]
-for kernel in all_kernels:
-    for mode in all_modes:
-        for size, size_str in zip(all_sizes, all_sizes_str):
-            file_name = None
-            if mode == "BASE":
-                file_name = f"hj_base"
-            if mode == "DMP":
-                file_name = f"hj_base"
-            if mode == "MAA" or mode == "MAANO":
-                file_name = f"hj_maa"
-            
-            checkpoint_id = None
-            checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/{kernel}_OMP/{mode}/{size_str}",
-                                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-omp/src/bin/x86/{file_name}",
-                                                    options=f"-a {kernel} -n 4 -r {size} -s {size}",
-                                                    num_cores=4)
-            add_command_run_MAA(directory=f"{RSLT_DIR}/{kernel}_OMP/{mode}/{size_str}",
-                                checkpoint=f"{CPT_DIR}/{kernel}_OMP/{mode}/{size_str}",
-                                checkpoint_id = checkpoint_id,
-                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-omp/src/bin/x86/{file_name}",
-                                options=f"-a {kernel} -n 4 -r {size} -s {size}",
-                                mode="MAA" if mode == "MAANO" else mode,
-                                do_reorder=False if mode == "MAANO" else True,
-                                num_cores=4)
-
-########################################## UME ##########################################
-
-# all_modes = ["BASE", "MAA", "MAANO"] #, "DMP"
-# all_kernels = ["gradzatp", "gradzatz", "gradzatz_invert", "gradzatp_invert"]
-# all_sizes = [2000000] #, 8000000]
-# all_sizes_str = ["2M"] #, "8M"]
-# for kernel in all_kernels:
-#     for mode in all_modes:
-#         for size, size_str in zip(all_sizes, all_sizes_str):
-#             file_name = f"{kernel}_maa" if (mode == "MAA" or mode == "MAANO") else f"{kernel}_base"
-            
-#             checkpoint_id = None
-#             checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/{kernel}/{mode}/{size_str}",
-#                                                     command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/UME/{file_name}",
-#                                                     options=f"{size}")
-#             add_command_run_MAA(directory=f"{RSLT_DIR}/{kernel}/{mode}/{size_str}",
-#                                 checkpoint=f"{CPT_DIR}/{kernel}/{mode}/{size_str}",
-#                                 checkpoint_id = checkpoint_id,
-#                                 command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/UME/{file_name}",
-#                                 options=f"{size}",
-#                                 mode="MAA" if mode == "MAANO" else mode,
-#                                 do_reorder=False if mode == "MAANO" else True)
-
 # for kernel in ["gather", "rmw"]: # ["rmw", "gather", "gather_rmw_directrangeloop_cond"]: # ["rmw"]:
 #     test_dir = "CISC_allrowmiss" # "CISC_allrowmiss_gathercorrect" if kernel == "gather" else "CISC_allrowmiss"
 #     for size, size_str in zip([65536], ["64K"]): # zip([16384], ["16K"]): #  zip([16384, 262144], ["16K", "256K"]):
@@ -570,6 +376,327 @@ for kernel in all_kernels:
 #                                 mode=mode,
 #                                 tile_size=16384)
 
+########################################## NAS ##########################################
+
+all_kernels = ["is", "cg"]
+
+all_modes = ["BASE", "MAA", "DMP"]
+
+# General experiments
+if DO_GENERAL_EXP:
+    for kernel in all_kernels:
+        for mode in all_modes:
+            file_name = f"{kernel}_maa" if mode == "MAA" else f"{kernel}_base"
+            option = "BASE" if mode == "DMP" else mode
+            size = "c" if kernel == "cg" else "b"
+            checkpoint_id = None
+            checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/{kernel}/{mode}/{size}",
+                                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/NAS/{kernel}/{file_name}",
+                                                    options=option)
+            add_command_run_MAA(directory=f"{RSLT_DIR}/{kernel}/{mode}/{size}",
+                                checkpoint=f"{CPT_DIR}/{kernel}/{mode}/{size}",
+                                checkpoint_id = checkpoint_id,
+                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/NAS/{kernel}/{file_name}",
+                                options=option,
+                                mode=mode)
+
+# Reordering and force cache experiments
+if DO_REORDER_FORCE_CACHE_EXP:
+    for kernel in all_kernels:
+        file_name = f"{kernel}_maa"
+        size = "c" if kernel == "cg" else "b"
+        checkpoint_id = None
+        checkpoint_id = add_command_checkpoint(directory=f"{RC_CPT_DIR}/{kernel}/MAA/{size}",
+                                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/NAS/{kernel}/{file_name}",
+                                                options="MAA")
+        for MAA_config in all_MAA_configs:
+            reordering = "REORDER" if MAA_config['do_reorder'] else "NOREORDER"
+            force_cache = "FCACHE" if MAA_config['force_cache'] else "NOFCACHE"
+            add_command_run_MAA(directory=f"{RC_RSLT_DIR}/{kernel}/MAA/{size}/{reordering}/{force_cache}",
+                                checkpoint=f"{RC_CPT_DIR}/{kernel}/MAA/{size}",
+                                checkpoint_id = checkpoint_id,
+                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/NAS/{kernel}/{file_name}",
+                                options="MAA",
+                                mode="MAA",
+                                do_reorder=MAA_config['do_reorder'],
+                                force_cache=MAA_config['force_cache'])
+
+# Tile size experiments
+if DO_TILE_SIZE_EXP:
+    for kernel in all_kernels:
+        for tile_size, tile_size_str in zip(all_tile_sizes, all_tile_sizes_str):
+            file_name = f"{kernel}_maa_{tile_size_str}"
+            size = "c" if kernel == "cg" else "b"
+            checkpoint_id = None
+            checkpoint_id = add_command_checkpoint(directory=f"{TS_CPT_DIR}/{kernel}/MAA/{size}/{tile_size_str}",
+                                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/NAS/{kernel}/{file_name}",
+                                                    options="MAA") 
+            add_command_run_MAA(directory=f"{TS_RSLT_DIR}/{kernel}/MAA/{size}/{tile_size_str}",
+                                checkpoint=f"{TS_CPT_DIR}/{kernel}/MAA/{size}/{tile_size_str}",
+                                checkpoint_id = checkpoint_id,
+                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/NAS/{kernel}/{file_name}",
+                                options="MAA",
+                                mode="MAA",
+                                tile_size=tile_size)
+        
+########################################## GAPB ##########################################
+
+all_modes = ["BASE", "MAA", "DMP"]
+all_kernels = ["bfs", "pr", "bc", "sssp"]
+
+# General experiments
+if DO_GENERAL_EXP:
+    for kernel in all_kernels:
+        for mode in all_modes:
+            size = 20 if kernel == "bc" else 22
+            file_name = f"{kernel}_maa" if mode == "MAA" else f"{kernel}"
+            graph_ext = "wsg" if kernel == "sssp" else "sg"
+            checkpoint_id = None
+            checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/{kernel}/{mode}/{size}",
+                                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
+                                                    options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1")
+            add_command_run_MAA(directory=f"{RSLT_DIR}/{kernel}/{mode}/{size}",
+                                checkpoint=f"{CPT_DIR}/{kernel}/{mode}/{size}",
+                                checkpoint_id = checkpoint_id,
+                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
+                                options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
+                                mode=mode)
+        
+# Reordering and force cache experiments
+if DO_REORDER_FORCE_CACHE_EXP:
+    for kernel in all_kernels:
+        size = 20 if kernel == "bc" else 22
+        file_name = f"{kernel}_maa"
+        graph_ext = "wsg" if kernel == "sssp" else "sg"
+        checkpoint_id = None
+        checkpoint_id = add_command_checkpoint(directory=f"{RC_CPT_DIR}/{kernel}/MAA/{size}",
+                                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
+                                                options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1")
+        for MAA_config in all_MAA_configs:
+            reordering = "REORDER" if MAA_config['do_reorder'] else "NOREORDER"
+            force_cache = "FCACHE" if MAA_config['force_cache'] else "NOFCACHE"
+            add_command_run_MAA(directory=f"{RC_RSLT_DIR}/{kernel}/MAA/{size}/{reordering}/{force_cache}",
+                                checkpoint=f"{RC_CPT_DIR}/{kernel}/MAA/{size}",
+                                checkpoint_id = checkpoint_id,
+                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
+                                options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
+                                mode="MAA",
+                                do_reorder=MAA_config['do_reorder'],
+                                force_cache=MAA_config['force_cache'])
+
+# Tile size experiments
+if DO_TILE_SIZE_EXP:
+    for kernel in all_kernels:
+        for tile_size, tile_size_str in zip(all_tile_sizes, all_tile_sizes_str):
+            size = 20 if kernel == "bc" else 22
+            file_name = f"{kernel}_maa_{tile_size_str}"
+            graph_ext = "wsg" if kernel == "sssp" else "sg"
+            checkpoint_id = None
+            checkpoint_id = add_command_checkpoint(directory=f"{TS_CPT_DIR}/{kernel}/MAA/{size}/{tile_size_str}",
+                                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
+                                                    options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1")
+            add_command_run_MAA(directory=f"{TS_RSLT_DIR}/{kernel}/MAA/{size}/{tile_size_str}",
+                                checkpoint=f"{TS_CPT_DIR}/{kernel}/MAA/{size}/{tile_size_str}",
+                                checkpoint_id = checkpoint_id,
+                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
+                                options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
+                                mode="MAA",
+                                tile_size=tile_size)
+
+# ########################################## SPATTER ##########################################
+
+all_modes = ["MAA", "BASE", "DMP"]
+all_kernels = ["xrage", "flag"]
+
+# General experiments
+if DO_GENERAL_EXP:
+    for kernel in all_kernels:
+        for mode in all_modes:
+            file_name = "spatter_maa" if mode == "MAA" else "spatter_base"
+            
+            checkpoint_id = None
+            checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/spatter/{kernel}/{mode}",
+                                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/build/{file_name}",
+                                                    options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/tests/test-data/{kernel}/all.json")
+            add_command_run_MAA(directory=f"{RSLT_DIR}/spatter/{kernel}/{mode}",
+                                checkpoint=f"{CPT_DIR}/spatter/{kernel}/{mode}",
+                                checkpoint_id = checkpoint_id,
+                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/build/{file_name}",
+                                options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/tests/test-data/{kernel}/all.json",
+                                mode=mode)
+
+# Reordering and force cache experiments
+if DO_REORDER_FORCE_CACHE_EXP:
+    for kernel in all_kernels:
+        file_name = "spatter_maa"
+        
+        checkpoint_id = None
+        checkpoint_id = add_command_checkpoint(directory=f"{RC_CPT_DIR}/spatter/{kernel}/MAA",
+                                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/build/{file_name}",
+                                                options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/tests/test-data/{kernel}/all.json")
+        for MAA_config in all_MAA_configs:
+            reordering = "REORDER" if MAA_config['do_reorder'] else "NOREORDER"
+            force_cache = "FCACHE" if MAA_config['force_cache'] else "NOFCACHE"
+            add_command_run_MAA(directory=f"{RC_RSLT_DIR}/spatter/{kernel}/MAA/{reordering}/{force_cache}",
+                                checkpoint=f"{RC_CPT_DIR}/spatter/{kernel}/MAA",
+                                checkpoint_id = checkpoint_id,
+                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/build/{file_name}",
+                                options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/tests/test-data/{kernel}/all.json",
+                                mode="MAA",
+                                do_reorder=MAA_config['do_reorder'],
+                                force_cache=MAA_config['force_cache'])
+        
+# Tile size experiments
+if DO_TILE_SIZE_EXP:
+    for kernel in all_kernels:
+        for tile_size, tile_size_str in zip(all_tile_sizes, all_tile_sizes_str):
+            file_name = f"spatter_maa_{tile_size_str}"
+            
+            checkpoint_id = None
+            checkpoint_id = add_command_checkpoint(directory=f"{TS_CPT_DIR}/spatter/{kernel}/MAA/{tile_size_str}",
+                                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/build/{file_name}",
+                                                    options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/tests/test-data/{kernel}/all.json")
+            add_command_run_MAA(directory=f"{TS_RSLT_DIR}/spatter/{kernel}/MAA/{tile_size_str}",
+                                checkpoint=f"{TS_CPT_DIR}/spatter/{kernel}/MAA/{tile_size_str}",
+                                checkpoint_id = checkpoint_id,
+                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/build/{file_name}",
+                                options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/tests/test-data/{kernel}/all.json",
+                                mode="MAA",
+                                tile_size=tile_size)
+
+# ######################################### HASHJOIN ##########################################
+
+# os.system(f"cp {GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-ph-2/relR_2M.dat ./")
+# os.system(f"cp {GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-ph-2/relS_2M.dat ./")
+# os.system(f"cp {GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-ph-2/relR_8M.dat ./")
+# os.system(f"cp {GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-ph-2/relS_8M.dat ./")
+
+all_modes = ["MAA", "BASE", "DMP"]
+all_kernels = ["PRH", "PRO"]
+size = 2000000
+size_str = "2M"
+
+# General experiments
+if DO_GENERAL_EXP:
+    for kernel in all_kernels:
+        for mode in all_modes:
+            file_name = "hj_maa" if mode == "MAA" else "hj_base"
+            
+            checkpoint_id = None
+            checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/{kernel}/{mode}/{size_str}",
+                                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin/src/bin/x86/{file_name}",
+                                                    options=f"-a {kernel} -n 4 -r {size} -s {size}")
+            add_command_run_MAA(directory=f"{RSLT_DIR}/{kernel}/{mode}/{size_str}",
+                                checkpoint=f"{CPT_DIR}/{kernel}/{mode}/{size_str}",
+                                checkpoint_id = checkpoint_id,
+                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin/src/bin/x86/{file_name}",
+                                options=f"-a {kernel} -n 4 -r {size} -s {size}",
+                                mode=mode)
+        
+# Reordering and force cache experiments
+if DO_REORDER_FORCE_CACHE_EXP:
+    for kernel in all_kernels:
+        file_name = "hj_maa"
+        
+        checkpoint_id = None
+        checkpoint_id = add_command_checkpoint(directory=f"{RC_CPT_DIR}/{kernel}/MAA/{size_str}",
+                                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin/src/bin/x86/{file_name}",
+                                                options=f"-a {kernel} -n 4 -r {size} -s {size}")
+        for MAA_config in all_MAA_configs:
+            reordering = "REORDER" if MAA_config['do_reorder'] else "NOREORDER"
+            force_cache = "FCACHE" if MAA_config['force_cache'] else "NOFCACHE"
+            add_command_run_MAA(directory=f"{RC_RSLT_DIR}/{kernel}/MAA/{size_str}/{reordering}/{force_cache}",
+                                checkpoint=f"{RC_CPT_DIR}/{kernel}/MAA/{size_str}",
+                                checkpoint_id = checkpoint_id,
+                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin/src/bin/x86/{file_name}",
+                                options=f"-a {kernel} -n 4 -r {size} -s {size}",
+                                mode="MAA",
+                                do_reorder=MAA_config['do_reorder'],
+                                force_cache=MAA_config['force_cache'])
+        
+# Tile size experiments
+if DO_TILE_SIZE_EXP:
+    for kernel in all_kernels:
+        for tile_size, tile_size_str in zip(all_tile_sizes, all_tile_sizes_str):
+            file_name = f"hj_maa_{tile_size_str}"
+            
+            checkpoint_id = None
+            checkpoint_id = add_command_checkpoint(directory=f"{TS_CPT_DIR}/{kernel}/MAA/{size_str}/{tile_size_str}",
+                                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin/src/bin/x86/{file_name}",
+                                                    options=f"-a {kernel} -n 4 -r {size} -s {size}")
+            add_command_run_MAA(directory=f"{TS_RSLT_DIR}/{kernel}/MAA/{size_str}/{tile_size_str}",
+                                checkpoint=f"{TS_CPT_DIR}/{kernel}/MAA/{size_str}/{tile_size_str}",
+                                checkpoint_id = checkpoint_id,
+                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin/src/bin/x86/{file_name}",
+                                options=f"-a {kernel} -n 4 -r {size} -s {size}",
+                                mode="MAA",
+                                tile_size=tile_size)
+
+
+########################################## UME ##########################################
+
+all_modes = ["MAA", "BASE", "DMP"]
+all_kernels = ["gradzatp", "gradzatz", "gradzatz_invert", "gradzatp_invert"]
+size = 2000000
+size_str = "2M"
+
+# General experiments
+if DO_GENERAL_EXP:
+    for kernel in all_kernels:
+        for mode in all_modes:
+                file_name = f"{kernel}_maa" if mode == "MAA" else f"{kernel}_base"
+                
+                checkpoint_id = None
+                checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/{kernel}/{mode}/{size_str}",
+                                                        command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/UME/{file_name}",
+                                                        options=f"{size}")
+                add_command_run_MAA(directory=f"{RSLT_DIR}/{kernel}/{mode}/{size_str}",
+                                    checkpoint=f"{CPT_DIR}/{kernel}/{mode}/{size_str}",
+                                    checkpoint_id = checkpoint_id,
+                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/UME/{file_name}",
+                                    options=f"{size}",
+                                    mode=mode)
+
+# Reordering and force cache experiments
+if DO_REORDER_FORCE_CACHE_EXP:
+    for kernel in all_kernels:
+        file_name = f"{kernel}_maa"
+        
+        checkpoint_id = None
+        checkpoint_id = add_command_checkpoint(directory=f"{RC_CPT_DIR}/{kernel}/MAA/{size_str}",
+                                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/UME/{file_name}",
+                                                options=f"{size}")
+        for MAA_config in all_MAA_configs:
+            reordering = "REORDER" if MAA_config['do_reorder'] else "NOREORDER"
+            force_cache = "FCACHE" if MAA_config['force_cache'] else "NOFCACHE"
+            add_command_run_MAA(directory=f"{RC_RSLT_DIR}/{kernel}/MAA/{size_str}/{reordering}/{force_cache}",
+                                checkpoint=f"{RC_CPT_DIR}/{kernel}/MAA/{size_str}",
+                                checkpoint_id = checkpoint_id,
+                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/UME/{file_name}",
+                                options=f"{size}",
+                                mode="MAA",
+                                do_reorder=MAA_config['do_reorder'],
+                                force_cache=MAA_config['force_cache'])
+        
+# Tile size experiments
+if DO_TILE_SIZE_EXP:
+    for kernel in all_kernels:
+        for tile_size, tile_size_str in zip(all_tile_sizes, all_tile_sizes_str):
+            file_name = f"{kernel}_maa_{tile_size_str}"
+            
+            checkpoint_id = None
+            checkpoint_id = add_command_checkpoint(directory=f"{TS_RSLT_DIR}/{kernel}/MAA/{size_str}/{tile_size_str}",
+                                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/UME/{file_name}",
+                                                options=f"{size}")
+            add_command_run_MAA(directory=f"{TS_RSLT_DIR}/{kernel}/MAA/{size_str}/{tile_size_str}",
+                                checkpoint=f"{TS_CPT_DIR}/{kernel}/MAA/{size_str}/{tile_size_str}",
+                                checkpoint_id = checkpoint_id,
+                                command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/UME/{file_name}",
+                                options=f"{size}",
+                                mode="MAA",
+                                tile_size=tile_size)
+
+########################################## RUN SELECTED EXPERIMENTS ##########################################
 if parallelism != 0:
     threads = []
     for i in range(parallelism):

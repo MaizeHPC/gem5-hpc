@@ -224,6 +224,7 @@ def addNoISAOptions(parser):
     parser.add_argument("--maa_num_row_table_config_cache_entries", type=int, default=16, help="Number of row table entry history in the configuration cache")
     parser.add_argument("--maa_reconfigure_row_table", action="store_true", help="Reconfigure row table")
     parser.add_argument("--maa_no_reorder", default=False, action="store_true", help="Do not reorder using row table")
+    parser.add_argument("--maa_force_cache_access", default=False, action="store_true", help="Force cache access instead of direct memory access for the indirect access unit")
     parser.add_argument("--maa_num_initial_row_table_slices", type=int, default=4, help="Number of initial row table slices if row table is not reconfigurable")
     parser.add_argument("--maa_num_request_table_addresses", type=int, default=128, help="Number of addresses in the request table")
     parser.add_argument("--maa_num_request_table_entries_per_address", type=int, default=16, help="Number of entries in the request table per address")

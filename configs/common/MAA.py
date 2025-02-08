@@ -32,3 +32,4 @@ class SharedMAA(MAA):
     num_memory_channels = 1
     num_cores = 4
     no_reorder = False
+    force_cache_access = False

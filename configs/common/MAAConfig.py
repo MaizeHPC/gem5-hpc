@@ -47,7 +47,10 @@ def _get_maa_opts(options):
 
     if(hasattr(options, "maa_no_reorder")):
         opts["no_reorder"] = getattr(options, "maa_no_reorder")
-    
+
+    if(hasattr(options, "maa_force_cache_access")):
+        opts["force_cache_access"] = getattr(options, "maa_force_cache_access")
+
     if(hasattr(options, "maa_num_initial_row_table_slices")):
         opts["num_initial_row_table_slices"] = getattr(options, "maa_num_initial_row_table_slices")
     
