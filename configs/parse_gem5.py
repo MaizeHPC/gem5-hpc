@@ -425,50 +425,51 @@ def parse_mcpat_stats(sim_dir, target_stats, latency):
         with open(f"{sim_dir}/mcpat.stats", "w") as f:
             subprocess.run(COMMAND, shell=True, stdout=f, stderr=f)
     space = None
-    with open(f"{sim_dir}/mcpat.stats", "r") as f:
-        lines = f.readlines()
-        for line in lines:
-            if "Total Cores" in line:
-                space = "core"
-            elif "Total L3s" in line:
-                space = "llc"
-            elif "Total MCs" in line:
-                space = "core"
-            elif "******************" in line:
-                space = None
-            elif space != None:
-                if "Subthreshold Leakage with power gating" in line:
-                    power = float(line.split(" = ")[1].split(" ")[0])
-                    if space == "core":
-                        core_static_power += power
-                    elif space == "llc":
-                        llc_static_power += power
-                    else:
-                        assert False
-                elif "Gate Leakage" in line:
-                    power = float(line.split(" = ")[1].split(" ")[0])
-                    if space == "core":
-                        core_static_power += power
-                    elif space == "llc":
-                        llc_static_power += power
-                    else:
-                        assert False
-                elif "Runtime Dynamic" in line:
-                    power = float(line.split(" = ")[1].split(" ")[0])
-                    if space == "core":
-                        core_dynamic_power += power
-                    elif space == "llc":
-                        llc_dynamic_power += power
-                    else:
-                        assert False
-        core_power = core_static_power + core_dynamic_power
-        llc_power = llc_static_power + llc_dynamic_power
-        core_static_energy = core_static_power * latency
-        core_dynamic_energy = core_dynamic_power * latency
-        core_energy = core_power * latency
-        llc_static_energy = llc_static_power * latency
-        llc_dynamic_energy = llc_dynamic_power * latency
-        llc_energy = llc_power * latency
+    if os.path.exists(f"{sim_dir}/mcpat.stats"):
+        with open(f"{sim_dir}/mcpat.stats", "r") as f:
+            lines = f.readlines()
+            for line in lines:
+                if "Total Cores" in line:
+                    space = "core"
+                elif "Total L3s" in line:
+                    space = "llc"
+                elif "Total MCs" in line:
+                    space = "core"
+                elif "******************" in line:
+                    space = None
+                elif space != None:
+                    if "Subthreshold Leakage with power gating" in line:
+                        power = float(line.split(" = ")[1].split(" ")[0])
+                        if space == "core":
+                            core_static_power += power
+                        elif space == "llc":
+                            llc_static_power += power
+                        else:
+                            assert False
+                    elif "Gate Leakage" in line:
+                        power = float(line.split(" = ")[1].split(" ")[0])
+                        if space == "core":
+                            core_static_power += power
+                        elif space == "llc":
+                            llc_static_power += power
+                        else:
+                            assert False
+                    elif "Runtime Dynamic" in line:
+                        power = float(line.split(" = ")[1].split(" ")[0])
+                        if space == "core":
+                            core_dynamic_power += power
+                        elif space == "llc":
+                            llc_dynamic_power += power
+                        else:
+                            assert False
+            core_power = core_static_power + core_dynamic_power
+            llc_power = llc_static_power + llc_dynamic_power
+            core_static_energy = core_static_power * latency
+            core_dynamic_energy = core_dynamic_power * latency
+            core_energy = core_power * latency
+            llc_static_energy = llc_static_power * latency
+            llc_dynamic_energy = llc_dynamic_power * latency
+            llc_energy = llc_power * latency
     return core_static_power, core_dynamic_power, core_power, llc_static_power, llc_dynamic_power, llc_power, core_static_energy, core_dynamic_energy, core_energy, llc_static_energy, llc_dynamic_energy, llc_energy
 
 

@@ -42,7 +42,7 @@ void MAA::recvMemTimingResp(PacketPtr pkt) {
             }
         }
         bool received = false;
-        for (int i = 0; i < num_indirect_access_units; i++) {
+        for (int i = 0; i < num_maas; i++) {
             if (indirectAccessUnits[i].getState() == IndirectAccessUnit::Status::Fill ||
                 indirectAccessUnits[i].getState() == IndirectAccessUnit::Status::Request) {
                 if (indirectAccessUnits[i].recvData(pkt->getAddr(), pkt->getPtr<uint8_t>(), false)) {
@@ -50,7 +50,7 @@ void MAA::recvMemTimingResp(PacketPtr pkt) {
                 }
             }
         }
-        for (int i = 0; i < num_stream_access_units; i++) {
+        for (int i = 0; i < num_maas; i++) {
             if (streamAccessUnits[i].getState() == StreamAccessUnit::Status::Request) {
                 panic_if(streamAccessUnits[i].recvData(pkt->getAddr(), pkt->getPtr<uint8_t>()),
                          "Received multiple responses for the same request\n");

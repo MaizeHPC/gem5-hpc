@@ -12,6 +12,8 @@
 #include "arch/generic/mmu.hh"
 
 namespace gem5 {
+class MAA;
+
 enum class FuncUnitType : uint8_t {
     STREAM = 0,
     INDIRECT = 1,
@@ -100,6 +102,12 @@ public:
         FLOAT64_TYPE = 5,
         MAX
     };
+    enum class AccessType : uint8_t {
+        READ = 0,
+        WRITE = 1,
+        COMPUTE = 2,
+        MAX
+    };
     std::string datatype_names[6] = {
         "UINT32",
         "INT32",
@@ -136,7 +144,6 @@ public:
     Addr baseAddr;
     Addr minAddr, maxAddr;
     int8_t addrRangeID;
-    bool addrRangeValid;
     int16_t src1RegID, src2RegID, src3RegID, dst1RegID, dst2RegID;
     int16_t src1SpdID, src2SpdID;
     TileStatus src1Status, src2Status;
@@ -150,11 +157,12 @@ public:
     OPType optype;
     // {Int, Float}
     DataType datatype;
+    // {Read, Write, Compute}
+    AccessType accessType;
     // {Idle, Translation, Fill, Request, Response}
     Status state;
     // {ALU, STREAM, INDIRECT}
     FuncUnitType funcUniType;
-    int funcUniID;
     ContextID CID;
     Addr PC;
     int if_id;
@@ -162,32 +170,42 @@ public:
     std::string print() const;
     int getWordSize(int tile_id);
     int WordSize();
+    int core_id;
+    int maa_id;
 };
 
 class IF {
 protected:
-    Instruction *instructions;
-    unsigned int num_instructions;
-    bool *valids;
+    Instruction **instructions;
+    unsigned int num_instructions_per_maa;
+    unsigned int num_maas;
+    bool **valids;
+    MAA *maa;
     Instruction::TileStatus getTileStatus(int tile_id, uint8_t tile_status);
 
 public:
-    IF(unsigned int _num_instructions) : num_instructions(_num_instructions) {
-        instructions = new Instruction[num_instructions];
-        valids = new bool[num_instructions];
-        for (int i = 0; i < num_instructions; i++) {
-            valids[i] = false;
+    IF(unsigned int _num_instructions_per_maa, unsigned int _num_maas, MAA *_maa) : num_instructions_per_maa(_num_instructions_per_maa), num_maas(_num_maas), maa(_maa) {
+        instructions = new Instruction *[num_maas];
+        valids = new bool *[num_maas];
+        for (int i = 0; i < num_maas; i++) {
+            instructions[i] = new Instruction[num_instructions_per_maa];
+            valids[i] = new bool[num_instructions_per_maa];
+            for (int j = 0; j < num_instructions_per_maa; j++) {
+                valids[i][j] = false;
+            }
         }
     }
     ~IF() {
         assert(instructions != nullptr);
         assert(valids != nullptr);
-        delete[] instructions;
-        delete[] valids;
+        for (int i = 0; i < num_maas; i++) {
+            delete[] instructions[i];
+            delete[] valids[i];
+        }
     }
     bool pushInstruction(Instruction _instruction);
     bool canPushRegister(Register _reg);
-    Instruction *getReady(FuncUnitType funcUniType);
+    Instruction *getReady(FuncUnitType funcUniType, int maa_id = -1);
     void finishInstructionCompute(Instruction *instruction);
     void finishInstructionInvalidate(Instruction *instruction, int tile_id, uint8_t tile_status);
     void issueInstructionCompute(Instruction *instruction);

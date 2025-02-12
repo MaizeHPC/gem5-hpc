@@ -391,11 +391,9 @@ public:
     unsigned int num_tiles;
     unsigned int num_tile_elements;
     unsigned int num_regs;
-    unsigned int num_instructions;
-    unsigned int num_stream_access_units;
-    unsigned int num_indirect_access_units;
-    unsigned int num_range_units;
-    unsigned int num_alu_units;
+    unsigned int num_instructions_per_core;
+    unsigned int num_instructions_per_maa;
+    unsigned int num_instructions_total;
     unsigned int num_row_table_rows_per_slice;
     unsigned int num_row_table_entries_per_subslice_row;
     unsigned int num_row_table_config_cache_entries;
@@ -407,10 +405,11 @@ public:
     unsigned int num_request_table_entries_per_address;
     unsigned int num_memory_channels;
     unsigned int num_cores;
+    unsigned int num_maas;
+    unsigned int num_cores_per_maas;
     unsigned int m_core_addr_bits;
 
     Cycles rowtable_latency;
-    Cycles cache_snoop_latency;
     RequestorID requestorId;
 
     std::vector<AddrRegion> addrRegions;
@@ -444,9 +443,12 @@ public:
     Cycles getTicksToCycles(Tick t) const;
     Tick getCyclesToTicks(Cycles c) const;
     void resetStats() override;
+    bool getAddrRegionPermit(Instruction *instruction);
+    void scheduleIssueInstructionEvent(int latency = 0);
 
 protected:
     std::vector<RequestorID> my_instruction_RIDs;
+    std::map<RequestorID, int> my_RID_to_core_id;
     std::vector<PacketPtr> my_instruction_pkts;
     std::vector<bool> my_instruction_recvs;
     std::vector<PacketPtr> my_ready_pkts;
@@ -459,7 +461,6 @@ protected:
     void dispatchInstruction();
     void dispatchRegister();
     EventFunctionWrapper issueInstructionEvent, dispatchInstructionEvent, dispatchRegisterEvent;
-    void scheduleIssueInstructionEvent(int latency = 0);
     void scheduleDispatchInstructionEvent(int latency = 0);
     void scheduleDispatchRegisterEvent(int latency = 0);
     bool *streamAccessIdle;
@@ -478,12 +479,7 @@ public:
 
 public:
     struct MAAStats : public statistics::Group {
-        MAAStats(statistics::Group *parent,
-                 int num_indirect_access_units,
-                 int num_stream_access_units,
-                 int num_range_units,
-                 int num_alu_units,
-                 MAA *_maa);
+        MAAStats(statistics::Group *parent, int num_maas, MAA *_maa);
 
         MAA *maa;
         void preDumpStats() override;

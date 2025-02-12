@@ -119,6 +119,14 @@ void MAA::recvTimingReq(PacketPtr pkt, int core_id) {
             RegisterPtr current_register = new Register();
             current_register->size = pkt->getSize();
             current_register->register_id = element_id;
+            if (my_RID_to_core_id.find(pkt->requestorId()) == my_RID_to_core_id.end()) {
+                int num_received_cores = my_RID_to_core_id.size();
+                panic_if(num_received_cores == num_cores, "received more than %d instructions\n", num_cores);
+                my_RID_to_core_id[pkt->requestorId()] = num_received_cores;
+                num_received_cores++;
+            }
+            current_register->core_id = my_RID_to_core_id[pkt->requestorId()];
+            current_register->maa_id = current_register->core_id % num_maas;
             if (pkt->getSize() == 4) {
                 uint32_t data_UINT32 = pkt->getPtr<uint32_t>()[0];
                 int32_t data_INT32 = pkt->getPtr<int32_t>()[0];
@@ -137,11 +145,6 @@ void MAA::recvTimingReq(PacketPtr pkt, int core_id) {
             my_registers.push_back(current_register);
             my_register_pkts.push_back(pkt);
             assert(pkt->needsResponse());
-            // pkt->makeTimingResponse();
-            // // Here we reset the timing of the packet.
-            // Tick old_header_delay = pkt->headerDelay;
-            // pkt->headerDelay = pkt->payloadDelay = 0;
-            // cpuSidePorts[core_id]->schedTimingResp(pkt, getClockEdge(Cycles(1)) + old_header_delay);
             respond_immediately = false;
             scheduleDispatchRegisterEvent();
             break;
@@ -149,7 +152,7 @@ void MAA::recvTimingReq(PacketPtr pkt, int core_id) {
         case AddressRangeType::Type::INSTRUCTION_RANGE: {
             panic_if(core_id != 0, "Instruction range is only for the core 0\n");
             Addr offset = address_range.getOffset();
-            int element_id = offset % (num_instructions * sizeof(uint64_t));
+            int element_id = offset % (num_instructions_total * sizeof(uint64_t));
             assert(element_id % sizeof(uint64_t) == 0);
             element_id /= sizeof(uint64_t);
             uint64_t data = pkt->getPtr<uint64_t>()[0];
@@ -170,6 +173,14 @@ void MAA::recvTimingReq(PacketPtr pkt, int core_id) {
                 my_instruction_pkts.push_back(pkt);
                 my_instruction_RIDs.push_back(pkt->requestorId());
                 my_instruction_recvs.push_back(false);
+                if (my_RID_to_core_id.find(pkt->requestorId()) == my_RID_to_core_id.end()) {
+                    int num_received_cores = my_RID_to_core_id.size();
+                    panic_if(num_received_cores == num_cores, "received more than %d instructions\n", num_cores);
+                    my_RID_to_core_id[pkt->requestorId()] = num_received_cores;
+                    num_received_cores++;
+                }
+                current_instruction->core_id = my_RID_to_core_id[pkt->requestorId()];
+                current_instruction->maa_id = current_instruction->core_id % num_maas;
                 my_instructions.push_back(current_instruction);
             }
 #define NA_UINT8 0xFF
@@ -187,6 +198,18 @@ void MAA::recvTimingReq(PacketPtr pkt, int core_id) {
                 data = data >> 8;
                 current_instruction->opcode = (data & NA_UINT8) == NA_UINT8 ? Instruction::OpcodeType::MAX : static_cast<Instruction::OpcodeType>(data & NA_UINT8);
                 assert(current_instruction->opcode != Instruction::OpcodeType::MAX);
+                if (current_instruction->opcode == Instruction::OpcodeType::STREAM_LD ||
+                    current_instruction->opcode == Instruction::OpcodeType::INDIR_LD) {
+                    current_instruction->accessType = Instruction::AccessType::READ;
+                } else if (current_instruction->opcode == Instruction::OpcodeType::STREAM_ST ||
+                           current_instruction->opcode == Instruction::OpcodeType::INDIR_ST_SCALAR ||
+                           current_instruction->opcode == Instruction::OpcodeType::INDIR_ST_VECTOR ||
+                           current_instruction->opcode == Instruction::OpcodeType::INDIR_RMW_SCALAR ||
+                           current_instruction->opcode == Instruction::OpcodeType::INDIR_RMW_VECTOR) {
+                    current_instruction->accessType = Instruction::AccessType::WRITE;
+                } else {
+                    current_instruction->accessType = Instruction::AccessType::COMPUTE;
+                }
                 break;
             }
             case 1: {
@@ -215,6 +238,11 @@ void MAA::recvTimingReq(PacketPtr pkt, int core_id) {
                 current_instruction->state = Instruction::Status::Idle;
                 current_instruction->CID = pkt->req->contextId();
                 current_instruction->PC = pkt->req->getPC();
+                if (current_instruction->accessType != Instruction::AccessType::COMPUTE) {
+                    current_instruction->addrRangeID = getAddrRegion(current_instruction->baseAddr);
+                    current_instruction->minAddr = addrRegions[current_instruction->addrRangeID].first;
+                    current_instruction->maxAddr = addrRegions[current_instruction->addrRangeID].second;
+                }
                 my_instruction_recvs[instruction_id] = true;
                 DPRINTF(MAAController, "%s: %s received!\n", __func__, current_instruction->print());
                 respond_immediately = false;

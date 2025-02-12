@@ -9,30 +9,18 @@ from gem5.isas import ISA
 def _get_maa_opts(options):
     opts = {}
 
-    if hasattr(options, "maa_num_tiles"):
-        opts["num_tiles"] = getattr(options, "maa_num_tiles")
+    if hasattr(options, "maa_num_tiles_per_core"):
+        opts["num_tiles_per_core"] = getattr(options, "maa_num_tiles_per_core")
 
     if hasattr(options, "maa_num_tile_elements"):
         opts["num_tile_elements"] = getattr(options, "maa_num_tile_elements")
 
-    if hasattr(options, "maa_num_regs"):
-        opts["num_regs"] = getattr(options, "maa_num_regs")
+    if hasattr(options, "maa_num_regs_per_core"):
+        opts["num_regs_per_core"] = getattr(options, "maa_num_regs_per_core")
 
-    if hasattr(options, "maa_num_instructions"):
-        opts["num_instructions"] = getattr(options, "maa_num_instructions")
+    if hasattr(options, "maa_num_instructions_per_core"):
+        opts["num_instructions_per_core"] = getattr(options, "maa_num_instructions_per_core")
     
-    if hasattr(options, "maa_num_stream_access_units"):
-        opts["num_stream_access_units"] = getattr(options, "maa_num_stream_access_units")
-    
-    if hasattr(options, "maa_num_indirect_access_units"):
-        opts["num_indirect_access_units"] = getattr(options, "maa_num_indirect_access_units")
-    
-    if hasattr(options, "maa_num_range_units"):
-        opts["num_range_units"] = getattr(options, "maa_num_range_units")
-    
-    if hasattr(options, "maa_num_alu_units"):
-        opts["num_alu_units"] = getattr(options, "maa_num_alu_units")
-
     if hasattr(options, "maa_num_row_table_rows_per_slice"):
         opts["num_row_table_rows_per_slice"] = getattr(options, "maa_num_row_table_rows_per_slice")
 
@@ -66,11 +54,11 @@ def _get_maa_opts(options):
     if hasattr(options, "maa_spd_write_latency"):
         opts["spd_write_latency"] = getattr(options, "maa_spd_write_latency")
 
-    if hasattr(options, "maa_num_spd_read_ports"):
-        opts["num_spd_read_ports"] = getattr(options, "maa_num_spd_read_ports")
+    if hasattr(options, "maa_num_spd_read_ports_per_maa"):
+        opts["num_spd_read_ports_per_maa"] = getattr(options, "maa_num_spd_read_ports_per_maa")
 
-    if hasattr(options, "maa_num_spd_write_ports"):
-        opts["num_spd_write_ports"] = getattr(options, "maa_num_spd_write_ports")
+    if hasattr(options, "maa_num_spd_write_ports_per_maa"):
+        opts["num_spd_write_ports_per_maa"] = getattr(options, "maa_num_spd_write_ports_per_maa")
     
     if hasattr(options, "maa_rowtable_latency"):
         opts["rowtable_latency"] = getattr(options, "maa_rowtable_latency")
@@ -81,13 +69,16 @@ def _get_maa_opts(options):
     if hasattr(options, "maa_num_ALU_lanes"):
         opts["num_ALU_lanes"] = getattr(options, "maa_num_ALU_lanes")
     
+    if hasattr(options, "maa_num_maas"):
+        opts["num_maas"] = getattr(options, "maa_num_maas")
+    
     opts["num_memory_channels"] = options.mem_channels
     opts["num_cores"] = options.num_cpus
     
     addr_ranges = []
     start = options.mem_size
 
-    SPD_data_size = opts["num_tiles"] * opts["num_tile_elements"] * 4
+    SPD_data_size = opts["num_tiles_per_core"] * opts["num_cores"] * opts["num_tile_elements"] * 4
 
     # scratchpad data (cacheable) (4 bytes each)
     addr_ranges.append(AddrRange(start=start, size=SPD_data_size))
@@ -98,17 +89,17 @@ def _get_maa_opts(options):
     start = addr_ranges[-1].end
 
     # scratchpad size (noncacheable) (2 bytes each)
-    SPD_size_size = opts["num_tiles"] * 2
+    SPD_size_size = opts["num_tiles_per_core"] * opts["num_cores"] * 2
     addr_ranges.append(AddrRange(start=start, size=SPD_size_size))
     start = addr_ranges[-1].end
 
     # scratchpad ready (noncacheable) (2 bytes each)
-    SPD_ready_size = opts["num_tiles"] * 2
+    SPD_ready_size = opts["num_tiles_per_core"] * opts["num_cores"] * 2
     addr_ranges.append(AddrRange(start=start, size=SPD_ready_size))
     start = addr_ranges[-1].end
 
     # scalar registers (noncacheable) (4 bytes each)
-    scalar_regs_size = opts["num_regs"] * 4
+    scalar_regs_size = opts["num_regs_per_core"] * opts["num_cores"] * 4
     addr_ranges.append(AddrRange(start=start, size=scalar_regs_size))
     start = addr_ranges[-1].end
 
@@ -147,16 +138,16 @@ def config_maa(options, system):
     system.maa = SharedMAA(clk_domain=system.cpu_clk_domain, **opts)
     
     # Increasing LLC side packets to accommodate the MAA routing table
-    max_tol3_routing_table_size = (1 if "num_stream_access_units" not in opts else opts["num_stream_access_units"])
-    max_tol3_routing_table_size += (1 if "num_indirect_access_units" not in opts else opts["num_indirect_access_units"])
+    # Accomodating for all stream and indirect units (2)
+    max_tol3_routing_table_size = (2 if "num_maas" not in opts else 2 * opts["num_maas"])
     max_tol3_routing_table_size *= (1 if "num_tile_elements" not in opts else opts["num_tile_elements"])
     max_tol3_routing_table_size = max(512, max_tol3_routing_table_size)
     print(f"MAA max tol3bus routing table size: {max_tol3_routing_table_size}")
     system.maa.max_outstanding_cache_side_packets = max_tol3_routing_table_size
     system.tol3bus.max_routing_table_size = max_tol3_routing_table_size
 
-    max_mem_routing_table_size = 1 # for invalidator
-    max_mem_routing_table_size += (1 if "num_indirect_access_units" not in opts else opts["num_indirect_access_units"])
+    # Accomodating for all invalidator and indirect units (2)
+    max_mem_routing_table_size = (2 if "num_maas" not in opts else 2 * opts["num_maas"])
     max_mem_routing_table_size *= (1 if "num_tile_elements" not in opts else opts["num_tile_elements"])
     max_mem_routing_table_size = max(512, max_mem_routing_table_size)
     print(f"MAA max membus routing table size: {max_mem_routing_table_size}")

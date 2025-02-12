@@ -5,25 +5,9 @@ from threading import Thread, Lock
 parallelism = 64
 GEM5_DIR = "/home/arkhadem/gem5-hpc"
 DATA_DIR = "/data4/arkhadem/gem5-hpc"
-CPT_DIR = f"{DATA_DIR}/checkpoints"
-RSLT_DIR = f"{DATA_DIR}/results"
-RC_CPT_DIR = f"{DATA_DIR}/checkpoints_RC"
-RC_RSLT_DIR = f"{DATA_DIR}/results_RC"
-TS_CPT_DIR = f"{DATA_DIR}/checkpoints_TS"
-TS_RSLT_DIR = f"{DATA_DIR}/results_TS"
+CPT_DIR = f"{DATA_DIR}/checkpoints_scalability"
+RSLT_DIR = f"{DATA_DIR}/results_scalability"
 LOG_DIR = f"{DATA_DIR}/logs"
-
-all_MAA_configs = [{"do_reorder": True, "force_cache": False},
-                   {"do_reorder": False, "force_cache": False},
-                   {"do_reorder": True, "force_cache": True},
-                   {"do_reorder": False, "force_cache": True}]
-
-all_tile_sizes = [1024, 2048, 4096, 8192, 16384]
-all_tile_sizes_str = ["1K", "2K", "4K", "8K", "16K"]
-
-DO_GENERAL_EXP = True
-DO_REORDER_FORCE_CACHE_EXP = True
-DO_TILE_SIZE_EXP = True
 
 all_MICRO_kernels =   ["gather",
                         "scatter",
@@ -44,11 +28,11 @@ all_HASHJOIN_kernels = ["PRH", "PRO"]
 all_UME_kernels = ["gradzatp", "gradzatz", "gradzatz_invert", "gradzatp_invert"]
 
 RUN_MICRO = True
-RUN_NAS = True
-RUN_GAPB = True
-RUN_SPATTER = True
-RUN_HASHJOIN = True
-RUN_UME = True
+RUN_NAS = False
+RUN_GAPB = False
+RUN_SPATTER = False
+RUN_HASHJOIN = False
+RUN_UME = False
 
 os.system("mkdir -p " + LOG_DIR)
 
@@ -97,7 +81,6 @@ def workerthread(my_tid):
                 tasks[selected_task_id].finished = True
 
 cpu_type = "X86O3CPU"
-mem_size = "16GB"
 sys_clock = "3.2GHz"
 l1d_size = "32kB"
 l1d_assoc = 8
@@ -110,10 +93,8 @@ l1i_mshrs = 16
 l2_size = "256kB"
 l2_assoc = 4
 l2_mshrs = 32
-l3_mshrs = 256
 mem_type = "Ramulator2"
 ramulator_config = f"{GEM5_DIR}/ext/ramulator2/ramulator2/example_gem5_config.yaml"
-mem_channels = 2
 program_interval = 1000
 debug_type = "MAATrace" # "MAAAll,XBar,Cache,CacheVerbose,Exec,-ExecSymbol" #SyscallVerbose,MMU,Vma"#,Exec,-ExecSymbol" #,Exec,-ExecSymbol,MAAController,MAACpuPort,O3CPUAll" # ,MAACpuPort,MAAIndirect"
 #,TLB,MMU" #,MAAAll" #" #,MAAAll,TLB,MMU" #,XBar,Ramulator2" # "MAAAll,MAATrace,XBar,Cache,CacheVerbose,MSHR" # "MAAAll,MAATrace" # "XBar,Cache,MAAAll" # "MAAAll" # "XBar,Cache,MAAAll,HWPrefetch" # PacketQueue
@@ -124,12 +105,14 @@ debug_type = "MAATrace" # "MAAAll,XBar,Cache,CacheVerbose,Exec,-ExecSymbol" #Sys
 #     debug_type = "SPD,MAARangeFuser,MAAALU,MAAController,MAACachePort,MAAMemPort,MAAIndirect,MAAStream,MAAInvalidator"
     # debug_type = "MAACachePort,MAAIndirect,MAAStream,Cache"
 
-def add_command_checkpoint(directory, command, options, num_cores = 4):
+def add_command_checkpoint(directory, command, options, scaling_factor = 1):
+    num_cores = 4 * scaling_factor
+    mem_size = str(16 * scaling_factor) + "GB"
     COMMAND = f"rm -r {directory} 2>&1 > /dev/null; sleep 1; mkdir -p {directory}; sleep 2; "
     COMMAND += f"OMP_PROC_BIND=false OMP_NUM_THREADS={num_cores} build/X86/gem5.fast "
     COMMAND += f"--outdir={directory} "
     COMMAND += f"{GEM5_DIR}/configs/deprecated/example/se.py "
-    COMMAND += f"--cpu-type AtomicSimpleCPU -n {num_cores} --mem-size \"16GB\" "
+    COMMAND += f"--cpu-type AtomicSimpleCPU -n {num_cores} --mem-size \"{mem_size}\" "
     COMMAND += f"--cmd {command} --options \"{options}\" "
     COMMAND += f"2>&1 "
     COMMAND += "| awk '{ print strftime(), $0; fflush() }' "
@@ -147,28 +130,15 @@ def add_command_run_MAA(directory,
                         command,
                         options,
                         mode,
-                        tile_size = 16384,
-                        reconfigurable_RT = False,
-                        maa_warmer = False,
-                        num_cores = 4,
-                        do_prefetch = True,
-                        do_reorder = True,
-                        force_cache = False):
-    have_maa = False
-    l2_hwp_type = "StridePrefetcher"
-    l3_size = "8MB"
-    l3_assoc = 16
-    if mode == "DMP":
-        l2_hwp_type = "DiffMatchingPrefetcher"
-        l3_size = "10MB"
-        l3_assoc = 20
-    elif mode in ["MAA", "CMP"]:
-        have_maa = True
-    elif mode == "BASE":
-        l3_size = "10MB"
-        l3_assoc = 20
-    else:
-        raise ValueError("Unknown mode")
+                        scaling_factor):
+    l2_hwp_type = "DiffMatchingPrefetcher" if mode == "DMP" else "StridePrefetcher"
+    l3_size = str((8 if mode == "MAA" else 10) * scaling_factor) + "MB"
+    l3_assoc = (16 if mode == "MAA" else 20) * scaling_factor
+    num_cores = 4 * scaling_factor
+    mem_size = str(16 * scaling_factor) + "GB"
+    l3_mshrs = 256 * scaling_factor
+    mem_channels = 2 * scaling_factor
+    num_initial_row_table_slices = 32 * scaling_factor
 
     COMMAND = f"OMP_PROC_BIND=false OMP_NUM_THREADS={num_cores} {GEM5_DIR}/build/X86/gem5.opt "
     # if debug_type != None: # and mode == "MAA":
@@ -183,21 +153,18 @@ def add_command_run_MAA(directory,
     COMMAND += f"--caches "
     COMMAND += f"--l1d_size={l1d_size} "
     COMMAND += f"--l1d_assoc={l1d_assoc} "
-    if do_prefetch:
-        COMMAND += f"--l1d-hwp-type={l1d_hwp_type} "
+    COMMAND += f"--l1d-hwp-type={l1d_hwp_type} "
     COMMAND += f"--l1d_mshrs={l1d_mshrs} "
     COMMAND += f"--l1i_size={l1i_size} "
     COMMAND += f"--l1i_assoc={l1i_assoc} "
-    if do_prefetch:
-        COMMAND += f"--l1i-hwp-type={l1i_hwp_type} "
+    COMMAND += f"--l1i-hwp-type={l1i_hwp_type} "
     COMMAND += f"--l1i_mshrs={l1i_mshrs} "
     COMMAND += f"--l2cache "
     COMMAND += f"--l2_size={l2_size} "
     COMMAND += f"--l2_assoc={l2_assoc} "
-    if do_prefetch:
-        COMMAND += f"--l2-hwp-type={l2_hwp_type} "
-        if l2_hwp_type == "DiffMatchingPrefetcher":
-            COMMAND += f"--dmp-notify l1 "
+    COMMAND += f"--l2-hwp-type={l2_hwp_type} "
+    if l2_hwp_type == "DiffMatchingPrefetcher":
+        COMMAND += f"--dmp-notify l1 "
     COMMAND += f"--l2_mshrs={l2_mshrs} "
     COMMAND += f"--l3cache "
     COMMAND += f"--l3_size={l3_size} "
@@ -207,20 +174,11 @@ def add_command_run_MAA(directory,
     COMMAND += f"--mem-type {mem_type} "
     COMMAND += f"--ramulator-config {ramulator_config} "
     COMMAND += f"--mem-channels {mem_channels} "
-    if have_maa or maa_warmer:
+    if mode == "MAA":
         COMMAND += "--maa "
-        COMMAND += f"--maa_num_tile_elements {tile_size} "
         COMMAND += "--maa_l2_uncacheable "
         COMMAND += "--maa_l3_uncacheable "
-        # if reconfigurable_RT:
-        #     COMMAND += "--maa_reconfigure_row_table "
-        # else:
-        #     COMMAND += "--maa_num_initial_row_table_slices 4 "
-        COMMAND += "--maa_num_initial_row_table_slices 32 "
-        if do_reorder == False:
-            COMMAND += "--maa_no_reorder "
-        if force_cache == True:
-            COMMAND += "--maa_force_cache_access "
+        COMMAND += f"--maa_num_initial_row_table_slices {num_initial_row_table_slices} "
     COMMAND += f"--cmd {command} "
     COMMAND += f"--options \"{options}\" "
     if checkpoint != None:
@@ -234,8 +192,6 @@ def add_command_run_MAA(directory,
         command=f"rm -r {directory} 2>&1 > /dev/null; sleep 1; mkdir -p {directory} 2>&1 > /dev/null; sleep 1; rm -r {checkpoint}/cpt.%d 2>&1 > /dev/null; sleep 1; cp -r {checkpoint}/cpt.* {directory}/; sleep 1; {COMMAND}; sleep 1;"
     else:
         command=f"rm -r {directory} 2>&1 > /dev/null; sleep 1; mkdir -p {directory} 2>&1 > /dev/null; sleep 1; {COMMAND}; sleep 1;"
-    # print(command)
-    # exit(1)
     task = Task(command=command, dependency=checkpoint_id)
     if task in tasks:
         print(f"Task {command} already exists!")
@@ -243,18 +199,18 @@ def add_command_run_MAA(directory,
     tasks.append(task)
 
 
-# checkpoint_id = None
-# checkpoint_id = add_command_checkpoint(directory=f"{RC_CPT_DIR}/bfs/MAA/22/debug",
-#                                         command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/bfs_maa",
-#                                         options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_22.sg -l -n 1")
-# add_command_run_MAA(directory=f"{RC_RSLT_DIR}/bfs/MAA/22/REORDER/FCACHE/debug",
-#                     checkpoint=f"{RC_CPT_DIR}/bfs/MAA/22/debug",
-#                     checkpoint_id = checkpoint_id,
-#                     command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/bfs_maa",
-#                     options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_22.sg -l -n 1",
-#                     mode="MAA",
-#                     do_reorder=True,
-#                     force_cache=True)
+checkpoint_id = None
+checkpoint_id = add_command_checkpoint(directory=f"{RC_CPT_DIR}/bfs/MAA/22/debug",
+                                        command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/bfs_maa",
+                                        options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_22.sg -l -n 1")
+add_command_run_MAA(directory=f"{RC_RSLT_DIR}/bfs/MAA/22/REORDER/FCACHE/debug",
+                    checkpoint=f"{RC_CPT_DIR}/bfs/MAA/22/debug",
+                    checkpoint_id = checkpoint_id,
+                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/bfs_maa",
+                    options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_22.sg -l -n 1",
+                    mode="MAA",
+                    do_reorder=True,
+                    force_cache=True)
 
 
 # all_tiles = [1024, 2048, 4096, 8192, 16384]
@@ -410,7 +366,7 @@ if RUN_NAS:
 
     # General experiments
     if DO_GENERAL_EXP:
-        for kernel in all_NAS_kernels:
+        for kernel in all_kernels:
             for mode in all_modes:
                 file_name = f"{kernel}_maa" if mode == "MAA" else f"{kernel}_base"
                 option = "BASE" if mode == "DMP" else mode

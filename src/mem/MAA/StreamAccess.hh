@@ -110,7 +110,6 @@ protected:
     const Addr block_size = 64;
     const Addr page_size = 4096;
     Addr my_base_addr, my_min_addr, my_max_addr;
-    bool my_addr_range_valid;
     int8_t my_addr_range_id;
     int my_src_tile, my_dst_tile, my_cond_tile, my_min, my_max, my_stride;
     int my_received_responses, my_sent_requests;

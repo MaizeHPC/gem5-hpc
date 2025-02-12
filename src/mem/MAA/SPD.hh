@@ -109,6 +109,8 @@ struct Register {
 public:
     int register_id;
     int size;
+    int maa_id;
+    int core_id;
     uint32_t data_UINT32;
     uint64_t data_UINT64;
 };

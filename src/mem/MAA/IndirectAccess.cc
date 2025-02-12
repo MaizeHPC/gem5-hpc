@@ -492,7 +492,7 @@ void IndirectAccessUnit::fillRowTable(bool &finished, bool &waitForFinish, bool 
             uint32_t idx = maa->spd->getData<uint32_t>(my_idx_tile, my_i);
             num_spd_read_condidx_accesses++;
             Addr vaddr = my_base_addr + my_word_size * idx;
-            panic_if(my_addr_range_valid && (vaddr < my_min_addr || vaddr >= my_max_addr), "I[%d] %s: vaddr 0x%lx out of range [0x%lx, 0x%lx)!\n", my_indirect_id, __func__, vaddr, my_min_addr, my_max_addr);
+            panic_if(vaddr < my_min_addr || vaddr >= my_max_addr, "I[%d] %s: vaddr 0x%lx out of range [0x%lx, 0x%lx)!\n", my_indirect_id, __func__, vaddr, my_min_addr, my_max_addr);
             Addr block_vaddr = addrBlockAligner(vaddr, block_size);
             DPRINTF(MAAIndirect, "I[%d] %s: baseaddr = 0x%lx idx = %u wordsize = %d vaddr = 0x%lx!\n", my_indirect_id, __func__, my_base_addr, idx, my_word_size, vaddr);
             Addr paddr = translatePacket(block_vaddr);
@@ -608,7 +608,6 @@ void IndirectAccessUnit::executeInstruction() {
         my_fill_finished = false;
         my_force_cache_determined = false;
         my_force_cache = false;
-        my_addr_range_valid = my_instruction->addrRangeValid;
         my_min_addr = my_instruction->minAddr;
         my_max_addr = my_instruction->maxAddr;
         my_addr_range_id = my_instruction->addrRangeID;
@@ -827,7 +826,7 @@ void IndirectAccessUnit::createReadPacket(Addr addr, int latency) {
     real_req->setRegion(my_addr_range_id);
     PacketPtr read_pkt;
     if (my_instruction->opcode == Instruction::OpcodeType::INDIR_LD) {
-        read_pkt = new Packet(real_req, MemCmd::ReadSharedReq);
+        read_pkt = new Packet(real_req, MemCmd::ReadReq); // MemCmd::ReadSharedReq);
     } else {
         read_pkt = new Packet(real_req, MemCmd::ReadExReq);
     }
@@ -911,10 +910,10 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
         if (my_dst_tile != -1) {
             if (my_word_size == 4) {
                 maa->spd->setData<uint32_t>(my_dst_tile, itr, dataptr_u32_typed[wid]);
-                DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %u!\n", my_indirect_id, __func__, my_dst_tile, itr, dataptr_u32_typed[wid]);
+                DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %u/%d/%f!\n", my_indirect_id, __func__, my_dst_tile, itr, ((uint32_t *)new_data)[wid], ((int32_t *)new_data)[wid], ((float *)new_data)[wid]);
             } else {
                 maa->spd->setData<uint64_t>(my_dst_tile, itr, dataptr_u64_typed[wid]);
-                DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %lu!\n", my_indirect_id, __func__, my_dst_tile, itr, dataptr_u64_typed[wid]);
+                DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %lu/%ld/%lf!\n", my_indirect_id, __func__, my_dst_tile, itr, ((uint64_t *)new_data)[wid], ((int64_t *)new_data)[wid], ((double *)new_data)[wid]);
             }
             num_recv_spd_write_accesses++;
         }
@@ -926,10 +925,10 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
         case Instruction::OpcodeType::INDIR_ST_VECTOR: {
             if (my_word_size == 4) {
                 ((uint32_t *)new_data)[wid] = maa->spd->getData<uint32_t>(my_src_tile, itr);
-                DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] = SPD[%d][%d] = %f!\n", my_indirect_id, __func__, wid, my_src_tile, itr, ((float *)new_data)[wid]);
+                DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] = SPD[%d][%d] = %u/%d/%f!\n", my_indirect_id, __func__, wid, my_src_tile, itr, ((uint32_t *)new_data)[wid], ((int32_t *)new_data)[wid], ((float *)new_data)[wid]);
             } else {
                 ((uint64_t *)new_data)[wid] = maa->spd->getData<uint64_t>(my_src_tile, itr);
-                DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] = SPD[%d][%d] = %f!\n", my_indirect_id, __func__, wid, my_src_tile, itr, ((double *)new_data)[wid]);
+                DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] = SPD[%d][%d] = %lu/%ld/%lf!\n", my_indirect_id, __func__, wid, my_src_tile, itr, ((uint64_t *)new_data)[wid], ((int64_t *)new_data)[wid], ((double *)new_data)[wid]);
             }
             num_recv_spd_read_accesses++;
             break;

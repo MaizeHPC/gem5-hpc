@@ -181,7 +181,6 @@ void StreamAccessUnit::executeInstruction() {
         }
         all_page_info[all_page_info.size() - 1].max_itr = my_max;
         my_all_page_info.insert(all_page_info[all_page_info.size() - 1]);
-        my_addr_range_valid = my_instruction->addrRangeValid;
         my_min_addr = my_instruction->minAddr;
         my_max_addr = my_instruction->maxAddr;
         my_addr_range_id = my_instruction->addrRangeID;
@@ -242,7 +241,7 @@ void StreamAccessUnit::executeInstruction() {
                     }
                     if (my_cond_tile == -1 || maa->spd->getData<uint32_t>(my_cond_tile, page_it->curr_idx) != 0) {
                         Addr vaddr = my_base_addr + my_word_size * page_it->curr_itr;
-                        panic_if(my_addr_range_valid && (vaddr < my_min_addr || vaddr >= my_max_addr), "S[%d] %s: vaddr 0x%lx out of range [0x%lx, 0x%lx)!\n", my_stream_id, __func__, vaddr, my_min_addr, my_max_addr);
+                        panic_if(vaddr < my_min_addr || vaddr >= my_max_addr, "S[%d] %s: vaddr 0x%lx out of range [0x%lx, 0x%lx)!\n", my_stream_id, __func__, vaddr, my_min_addr, my_max_addr);
                         Addr block_vaddr = addrBlockAligner(vaddr, block_size);
                         if (block_vaddr != page_it->last_block_vaddr) {
                             if (page_it->last_block_vaddr != 0) {
