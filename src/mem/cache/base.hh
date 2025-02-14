@@ -158,12 +158,15 @@ protected:
     protected:
         BaseCache &cache;
         SnoopRespPacketQueue &snoopRespQueue;
+        const uint8_t portID;
 
     public:
         CacheReqPacketQueue(BaseCache &cache, RequestPort &port,
                             SnoopRespPacketQueue &snoop_resp_queue,
-                            const std::string &label) : ReqPacketQueue(cache, port, label), cache(cache),
-                                                        snoopRespQueue(snoop_resp_queue) {}
+                            const std::string &label,
+                            const uint8_t _port_id)
+            : ReqPacketQueue(cache, port, label), cache(cache),
+              snoopRespQueue(snoop_resp_queue), portID(_port_id) {}
 
         /**
          * Override the normal sendDeferredPacket and do not only
@@ -206,6 +209,8 @@ protected:
         // a pointer to our specific cache implementation
         BaseCache *cache;
 
+        const uint8_t portID;
+
     protected:
         virtual void recvTimingSnoopReq(PacketPtr pkt);
 
@@ -217,7 +222,7 @@ protected:
 
     public:
         MemSidePort(const std::string &_name, BaseCache *_cache,
-                    const std::string &_label);
+                    const std::string &_label, const uint8_t _portID);
     };
 
     /**
@@ -293,7 +298,17 @@ protected:
     };
 
     CpuSidePort cpuSidePort;
-    MemSidePort memSidePort;
+    std::vector<MemSidePort *> memSidePorts;
+    uint8_t numMemSidePorts;
+
+public:
+    uint8_t getMemSidePortID(Addr addr) const {
+        return (addr >> blkSizeLog2) % numMemSidePorts;
+    }
+
+    uint8_t getMemSidePortID(PacketPtr pkt) const {
+        return getMemSidePortID(pkt->getAddr());
+    }
 
 protected:
     struct CacheAccessorImpl : CacheAccessor {
@@ -318,10 +333,10 @@ protected:
 
 protected:
     /** Miss status registers */
-    MSHRQueue mshrQueue;
+    std::vector<MSHRQueue *> mshrQueues;
 
     /** Write/writeback buffer */
-    WriteQueue writeBuffer;
+    std::vector<WriteQueue *> writeBuffers;
 
     /** Tag and data Storage */
     BaseTags *tags;
@@ -386,19 +401,23 @@ protected:
      * system), effectively making this MSHR the ordering point.
      */
     void markInService(MSHR *mshr, bool pending_modified_resp) {
-        bool wasFull = mshrQueue.isFull();
-        mshrQueue.markInService(mshr, pending_modified_resp);
+        uint8_t portID = getMemSidePortID(mshr->blkAddr);
+        bool wasFull = mshrQueues[portID]->isFull();
+        mshrQueues[portID]->markInService(mshr, pending_modified_resp);
 
-        if (wasFull && !mshrQueue.isFull()) {
+        if (wasFull && !mshrQueues[portID]->isFull()) {
+            DPRINTF(Cache, "1- Unblocking...\n");
             clearBlocked(Blocked_NoMSHRs);
         }
     }
 
     void markInService(WriteQueueEntry *entry) {
-        bool wasFull = writeBuffer.isFull();
-        writeBuffer.markInService(entry);
+        uint8_t portID = getMemSidePortID(entry->blkAddr);
+        bool wasFull = writeBuffers[portID]->isFull();
+        writeBuffers[portID]->markInService(entry);
 
-        if (wasFull && !writeBuffer.isFull()) {
+        if (wasFull && !writeBuffers[portID]->isFull()) {
+            DPRINTF(Cache, "2- Unblocking...\n");
             clearBlocked(Blocked_NoWBBuffers);
         }
     }
@@ -611,7 +630,7 @@ protected:
      * something from the prefetcher. This function is responsible
      * for prioritizing among those sources on the fly.
      */
-    QueueEntry *getNextQueueEntry();
+    QueueEntry *getNextQueueEntry(uint8_t port_id);
 
     /**
      * Insert writebacks into the write buffer
@@ -871,10 +890,11 @@ protected:
     /**
      * Find next request ready time from among possible sources.
      */
-    Tick nextQueueReadyTime() const;
+    Tick nextQueueReadyTime(uint8_t portID) const;
 
     /** Block size of this cache */
     const unsigned blkSize;
+    const unsigned int blkSizeLog2;
 
     /**
      * The latency of tag lookup of a cache. It occurs when there is
@@ -951,7 +971,7 @@ protected:
      * Bit vector of the blocking reasons for the access path.
      * @sa #BlockedCause
      */
-    uint8_t blocked;
+    uint32_t blocked[BlockedCause::NUM_BLOCKED_CAUSES];
 
     /** Increasing order number assigned to each incoming request. */
     uint64_t order;
@@ -1173,11 +1193,14 @@ public:
     const AddrRangeList &getExclAddrRanges() const { return exclAddrRanges; }
 
     MSHR *allocateMissBuffer(PacketPtr pkt, Tick time, bool sched_send = true) {
-        MSHR *mshr = mshrQueue.allocate(pkt->getBlockAddr(blkSize), blkSize,
-                                        pkt, time, order++,
-                                        allocOnFill(pkt->cmd));
+        uint8_t port_id = getMemSidePortID(pkt);
+        bool was_full = mshrQueues[port_id]->isFull();
+        MSHR *mshr = mshrQueues[port_id]->allocate(pkt->getBlockAddr(blkSize), blkSize,
+                                                   pkt, time, order++,
+                                                   allocOnFill(pkt->cmd));
 
-        if (mshrQueue.isFull()) {
+        if (!was_full && mshrQueues[port_id]->isFull()) {
+            DPRINTF(Cache, "1- Blocking...\n");
             setBlocked((BlockedCause)MSHRQueue_MSHRs);
         }
 
@@ -1194,6 +1217,7 @@ public:
         assert(pkt->isWrite() || pkt->cmd == MemCmd::CleanEvict);
 
         Addr blk_addr = pkt->getBlockAddr(blkSize);
+        uint8_t port_id = getMemSidePortID(pkt);
 
         // If using compression, on evictions the block is decompressed and
         // the operation's latency is added to the payload delay. Consume
@@ -1204,15 +1228,17 @@ public:
             pkt->payloadDelay = 0;
         }
 
+        bool was_full = writeBuffers[port_id]->isFull();
         WriteQueueEntry *wq_entry =
-            writeBuffer.findMatch(blk_addr, pkt->isSecure());
+            writeBuffers[port_id]->findMatch(blk_addr, pkt->isSecure());
         if (wq_entry && !wq_entry->inService) {
             DPRINTF(Cache, "Potential to merge writeback %s", pkt->print());
         }
 
-        writeBuffer.allocate(blk_addr, blkSize, pkt, time, order++);
+        writeBuffers[port_id]->allocate(blk_addr, blkSize, pkt, time, order++);
 
-        if (writeBuffer.isFull()) {
+        if (!was_full && writeBuffers[port_id]->isFull()) {
+            DPRINTF(Cache, "2- Blocking...\n");
             setBlocked((BlockedCause)MSHRQueue_WriteBuffer);
         }
 
@@ -1224,7 +1250,12 @@ public:
      * Returns true if the cache is blocked for accesses.
      */
     bool isBlocked() const {
-        return blocked != 0;
+        for (int i = 0; i < BlockedCause::NUM_BLOCKED_CAUSES; i++) {
+            if (blocked[i] != 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -1233,14 +1264,13 @@ public:
      * @param cause The reason for the cache blocking.
      */
     void setBlocked(BlockedCause cause) {
-        uint8_t flag = 1 << cause;
-        if (blocked == 0) {
+        if (isBlocked() == false) {
             (*stats.blockedCauses[MAX_CMD_REGIONS])[cause]++;
             blockedCycle = curCycle();
             cpuSidePort.setBlocked();
         }
-        blocked |= flag;
-        DPRINTF(Cache, "Blocking for cause %d, mask=%d\n", cause, blocked);
+        blocked[cause] += 1;
+        DPRINTF(Cache, "Blocking for cause %d, %u %u %u\n", cause, blocked[0], blocked[1], blocked[2]);
     }
 
     /**
@@ -1251,10 +1281,9 @@ public:
      * access the cache. The cache must be in a state to handle that request.
      */
     void clearBlocked(BlockedCause cause) {
-        uint8_t flag = 1 << cause;
-        blocked &= ~flag;
-        DPRINTF(Cache, "Unblocking for cause %d, mask=%d\n", cause, blocked);
-        if (blocked == 0) {
+        blocked[cause] -= 1;
+        DPRINTF(Cache, "Unblocking for cause %d, %u %u %u\n", cause, blocked[0], blocked[1], blocked[2]);
+        if (isBlocked() == false) {
             (*stats.blockedCycles[MAX_CMD_REGIONS])[cause] += curCycle() - blockedCycle;
             cpuSidePort.clearBlocked();
         }
@@ -1269,7 +1298,9 @@ public:
      * @param time The time when to attempt sending a packet.
      */
     void schedMemSideSendEvent(Tick time) {
-        memSidePort.schedSendEvent(time);
+        for (int i = 0; i < memSidePorts.size(); i++) {
+            memSidePorts[i]->schedSendEvent(time);
+        }
     }
 
     bool inCache(Addr addr, bool is_secure) const {
@@ -1293,7 +1324,7 @@ public:
     }
 
     bool inMissQueue(Addr addr, bool is_secure) const {
-        return mshrQueue.findMatch(addr, is_secure);
+        return mshrQueues[getMemSidePortID(addr)]->findMatch(addr, is_secure);
     }
 
     void incMissCount(PacketPtr pkt) {

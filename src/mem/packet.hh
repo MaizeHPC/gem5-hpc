@@ -64,7 +64,7 @@
 #include "mem/request.hh"
 #include "sim/byteswap.hh"
 
-#define MAX_CMD_REGIONS 32
+#define MAX_CMD_REGIONS 256
 
 namespace gem5 {
 

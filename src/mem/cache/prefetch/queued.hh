@@ -111,7 +111,7 @@ protected:
          * @param t time when the prefetch becomes ready
          */
         void createPkt(Addr paddr, unsigned blk_size, RequestorID requestor_id,
-                       bool tag_prefetch, Tick t, bool tag_vaddr=false);
+                       bool tag_prefetch, Tick t, bool tag_vaddr = false);
 
         /**
          * Sets the translation request needed to obtain the physical address
@@ -170,7 +170,7 @@ protected:
     const bool tagVaddr;
 
     const bool crossPageCtrl;
-    
+
     /** Percentage of requests that can be throttled */
     const unsigned int throttleControlPct;
 
@@ -202,6 +202,7 @@ public:
                                    std::vector<AddrPriority> &addresses,
                                    const CacheAccessor &cache) = 0;
     PacketPtr getPacket() override;
+    PacketPtr testGetPacket() override;
 
     Tick nextPrefetchReadyTime() const override {
         return pfq.empty() ? MaxTick : pfq.front().tick;
@@ -210,7 +211,7 @@ public:
     void printQueue(const std::list<DeferredPacket> &queue) const;
 
     void printSize() const;
-    
+
 protected:
     /**
      * Adds a DeferredPacket to the specified queue

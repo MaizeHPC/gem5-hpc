@@ -236,6 +236,24 @@ void Queued::notify(const CacheAccessProbeArg &acc, const PrefetchInfo &pfi) {
 }
 
 PacketPtr
+Queued::testGetPacket() {
+    DPRINTF(HWPrefetch, "Requesting a prefetch to issue.\n");
+
+    if (pfq.empty()) {
+        // If the queue is empty, attempt first to fill it with requests
+        // from the queue of missing translations
+        processMissingTranslations(queueSize);
+    }
+
+    if (pfq.empty()) {
+        DPRINTF(HWPrefetch, "No hardware prefetches available.\n");
+        return nullptr;
+    }
+
+    return pfq.front().pkt;
+}
+
+PacketPtr
 Queued::getPacket() {
     DPRINTF(HWPrefetch, "Requesting a prefetch to issue.\n");
 

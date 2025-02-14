@@ -159,7 +159,7 @@ class SnoopFilter(SimObject):
 # caches. Normally this crossbar would be part of the cache itself.
 class L2XBar(CoherentXBar):
     # 256-bit crossbar by default
-    width = 32
+    width = 64
 
     # Assume that most of this is covered by the cache latencies, with
     # no more than a single pipeline stage for any packet.
@@ -195,7 +195,7 @@ class L3XBar(CoherentXBar):
 # coherent requestors, and DRAM controllers.
 class SystemXBar(CoherentXBar):
     # 128-bit crossbar by default
-    width = 16
+    width = 32
 
     # A handful pipeline stages for each portion of the latency
     # contributions.
@@ -224,7 +224,7 @@ class SystemXBar(CoherentXBar):
 # coherent requestors, and DRAM controllers.
 class SystemXBarNC(NoncoherentXBar):
     # 128-bit crossbar by default
-    width = 16
+    width = 32
 
     # A handful pipeline stages for each portion of the latency
     # contributions.

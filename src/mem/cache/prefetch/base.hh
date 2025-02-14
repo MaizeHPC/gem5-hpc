@@ -416,6 +416,8 @@ public:
 
     virtual PacketPtr getPacket() = 0;
 
+    virtual PacketPtr testGetPacket() = 0;
+
     virtual Tick nextPrefetchReadyTime() const = 0;
 
     void prefetchHit(const CacheAccessProbeArg &acc, bool miss);

@@ -137,7 +137,7 @@ class BaseCache(ClockedObject):
     )
 
     cpu_side = ResponsePort("Upstream port closer to the CPU and/or device")
-    mem_side = RequestPort("Downstream port closer to memory")
+    mem_sides = VectorRequestPort("Downstream ports closer to memory")
 
     addr_ranges = VectorParam.AddrRange(
         [AllMemory], "Address range for the CPU-side port (to allow striping)"

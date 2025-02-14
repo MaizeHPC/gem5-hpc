@@ -129,12 +129,28 @@ MAA::MAA(const MAAParams &p)
         switch (range_id) {
         case (uint8_t)AddressRangeType::Type::SPD_DATA_NONCACHEABLE_RANGE:
         case (uint8_t)AddressRangeType::Type::SPD_DATA_CACHEABLE_RANGE: {
+            // Addr start = range.start();
+            // Addr size_per_port = range.size() / num_cores;
+            // for (int i = 0; i < num_cores; ++i) {
+            //     DPRINTF(MAA, "Range[%s] for CPU port[%d]: %lx-%lx\n", AddressRangeType::address_range_names[range_id], i, start, start + size_per_port);
+            //     cpuPortAddrRanges[i].push_back(AddrRange(start, start + size_per_port));
+            //     start += size_per_port;
+            // }
             Addr start = range.start();
-            Addr size_per_port = range.size() / num_cores;
+            Addr end = range.end();
+            std::vector<Addr> mask;
+            Addr curr_mask = 1 << 6;
+            printf("MAA: cpu masks: ");
+            for (int i = 0; i < log2(num_cores); i++) {
+                mask.push_back(curr_mask);
+                printf("%lx ", curr_mask);
+                curr_mask = curr_mask << 1;
+            }
+            printf("\n");
             for (int i = 0; i < num_cores; ++i) {
-                DPRINTF(MAA, "Range[%s] for CPU port[%d]: %lx-%lx\n", AddressRangeType::address_range_names[range_id], i, start, start + size_per_port);
-                cpuPortAddrRanges[i].push_back(AddrRange(start, start + size_per_port));
-                start += size_per_port;
+                AddrRange curr_range = AddrRange(start, end, mask, i);
+                printf("MAA: Range[%s] for CPU port[%d]: %s\n", AddressRangeType::address_range_names[range_id], i, curr_range.to_string().c_str());
+                cpuPortAddrRanges[i].push_back(curr_range);
             }
             break;
         }

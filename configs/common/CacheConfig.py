@@ -71,6 +71,10 @@ def _get_cache_opts(level, options):
     mshrs_attr = f"{level}_mshrs"
     if hasattr(options, mshrs_attr):
         opts["mshrs"] = getattr(options, mshrs_attr)
+    
+    write_buffers_attr = f"{level}_write_buffers"
+    if hasattr(options, write_buffers_attr):
+        opts["write_buffers"] = getattr(options, write_buffers_attr)
 
     prefetcher_attr = f"{level}_hwp_type"
     if hasattr(options, prefetcher_attr):
@@ -150,7 +154,8 @@ def config_3L_cache(options, system):
 
         system.tol3bus = L3XBar(clk_domain=system.cpu_clk_domain)
         system.l3.cpu_side = system.tol3bus.mem_side_ports
-        system.l3.mem_side = system.membus.cpu_side_ports
+        for _ in range(options.num_cpus):
+            system.membus.cpu_side_ports = system.l3.mem_sides
 
     for i in range(options.num_cpus):
         icache = icache_class(**_get_cache_opts("l1i", options))
@@ -322,7 +327,7 @@ def config_cache(options, system):
 
         system.tol2bus = L2XBar(clk_domain=system.cpu_clk_domain)
         l2cache.cpu_side = system.tol2bus.mem_side_ports
-        l2cache.mem_side = system.membus.cpu_side_ports
+        system.membus.cpu_side_ports = l2cache.mem_sides
 
     if options.memchecker:
         system.memchecker = MemChecker()

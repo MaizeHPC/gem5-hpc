@@ -11,6 +11,8 @@ RC_CPT_DIR = f"{DATA_DIR}/checkpoints_RC"
 RC_RSLT_DIR = f"{DATA_DIR}/results_RC"
 TS_CPT_DIR = f"{DATA_DIR}/checkpoints_TS"
 TS_RSLT_DIR = f"{DATA_DIR}/results_TS"
+SC_CPT_DIR = f"{DATA_DIR}/checkpoints_SC"
+SC_RSLT_DIR = f"{DATA_DIR}/results_SC"
 LOG_DIR = f"{DATA_DIR}/logs"
 
 all_MAA_configs = [{"do_reorder": True, "force_cache": False},
@@ -18,12 +20,18 @@ all_MAA_configs = [{"do_reorder": True, "force_cache": False},
                    {"do_reorder": True, "force_cache": True},
                    {"do_reorder": False, "force_cache": True}]
 
-all_tile_sizes = [1024, 2048, 4096, 8192, 16384]
-all_tile_sizes_str = ["1K", "2K", "4K", "8K", "16K"]
+all_modes = ["BASE", "MAA", "DMP"]
+all_scaling_modes = ["BASE", "MAA"]
+
+all_tile_sizes = [1024, 2048, 4096, 8192, 16384, 32768]
+all_tile_sizes_str = ["1K", "2K", "4K", "8K", "16K", "32K"]
+all_scaling_cores = [4, 8, 16]
+all_scaling_maas = [1, 2, 4]
 
 DO_GENERAL_EXP = True
 DO_REORDER_FORCE_CACHE_EXP = True
 DO_TILE_SIZE_EXP = True
+DO_SCALING_EXP = True
 
 all_MICRO_kernels =   ["gather",
                         "scatter",
@@ -43,7 +51,7 @@ all_SPATTER_kernels = ["xrage", "flag"]
 all_HASHJOIN_kernels = ["PRH", "PRO"]
 all_UME_kernels = ["gradzatp", "gradzatz", "gradzatz_invert", "gradzatp_invert"]
 
-RUN_MICRO = True
+RUN_MICRO = False
 RUN_NAS = True
 RUN_GAPB = True
 RUN_SPATTER = True
@@ -97,23 +105,29 @@ def workerthread(my_tid):
                 tasks[selected_task_id].finished = True
 
 cpu_type = "X86O3CPU"
-mem_size = "16GB"
+mem_size_per_core = 4
 sys_clock = "3.2GHz"
 l1d_size = "32kB"
 l1d_assoc = 8
 l1d_hwp_type = "StridePrefetcher"
 l1d_mshrs = 16
+l1d_write_buffers = 8
 l1i_size = "32kB"
 l1i_assoc = 8
 l1i_hwp_type = "StridePrefetcher"
 l1i_mshrs = 16
+l1i_write_buffers = 8
 l2_size = "256kB"
 l2_assoc = 4
 l2_mshrs = 32
-l3_mshrs = 256
+l2_write_buffers = 16
+l3_size_per_core_maa = 2
+l3_assoc_per_core_maa = 2
+l3_mshrs_per_core = 64
+l3_write_buffers_per_core = 32
 mem_type = "Ramulator2"
 ramulator_config = f"{GEM5_DIR}/ext/ramulator2/ramulator2/example_gem5_config.yaml"
-mem_channels = 2
+mem_channels_per_core = 0.5
 program_interval = 1000
 debug_type = "MAATrace" # "MAAAll,XBar,Cache,CacheVerbose,Exec,-ExecSymbol" #SyscallVerbose,MMU,Vma"#,Exec,-ExecSymbol" #,Exec,-ExecSymbol,MAAController,MAACpuPort,O3CPUAll" # ,MAACpuPort,MAAIndirect"
 #,TLB,MMU" #,MAAAll" #" #,MAAAll,TLB,MMU" #,XBar,Ramulator2" # "MAAAll,MAATrace,XBar,Cache,CacheVerbose,MSHR" # "MAAAll,MAATrace" # "XBar,Cache,MAAAll" # "MAAAll" # "XBar,Cache,MAAAll,HWPrefetch" # PacketQueue
@@ -129,7 +143,7 @@ def add_command_checkpoint(directory, command, options, num_cores = 4):
     COMMAND += f"OMP_PROC_BIND=false OMP_NUM_THREADS={num_cores} build/X86/gem5.fast "
     COMMAND += f"--outdir={directory} "
     COMMAND += f"{GEM5_DIR}/configs/deprecated/example/se.py "
-    COMMAND += f"--cpu-type AtomicSimpleCPU -n {num_cores} --mem-size \"16GB\" "
+    COMMAND += f"--cpu-type AtomicSimpleCPU -n {num_cores} --mem-size \"{mem_size_per_core * num_cores}GB\" "
     COMMAND += f"--cmd {command} --options \"{options}\" "
     COMMAND += f"2>&1 "
     COMMAND += "| awk '{ print strftime(), $0; fflush() }' "
@@ -151,24 +165,26 @@ def add_command_run_MAA(directory,
                         reconfigurable_RT = False,
                         maa_warmer = False,
                         num_cores = 4,
+                        num_maas = 1,
                         do_prefetch = True,
                         do_reorder = True,
                         force_cache = False):
     have_maa = False
     l2_hwp_type = "StridePrefetcher"
-    l3_size = "8MB"
-    l3_assoc = 16
     if mode == "DMP":
         l2_hwp_type = "DiffMatchingPrefetcher"
-        l3_size = "10MB"
-        l3_assoc = 20
+        l3_size = f"{l3_size_per_core_maa * (num_cores+num_maas)}MB"
+        l3_assoc = l3_assoc_per_core_maa * (num_cores+num_maas)
     elif mode in ["MAA", "CMP"]:
         have_maa = True
+        l3_size = f"{l3_size_per_core_maa * num_cores}MB"
+        l3_assoc = l3_assoc_per_core_maa * num_cores
     elif mode == "BASE":
-        l3_size = "10MB"
-        l3_assoc = 20
+        l3_size = f"{l3_size_per_core_maa * (num_cores+num_maas)}MB"
+        l3_assoc = l3_assoc_per_core_maa * (num_cores+num_maas)
     else:
         raise ValueError("Unknown mode")
+    mem_channels = int(mem_channels_per_core * float(num_cores))
 
     COMMAND = f"OMP_PROC_BIND=false OMP_NUM_THREADS={num_cores} {GEM5_DIR}/build/X86/gem5.opt "
     # if debug_type != None: # and mode == "MAA":
@@ -177,7 +193,7 @@ def add_command_run_MAA(directory,
     COMMAND += f"{GEM5_DIR}/configs/deprecated/example/se.py "
     COMMAND += f"--cpu-type {cpu_type} "
     COMMAND += f"-n {num_cores} "
-    COMMAND += f"--mem-size '{mem_size}' "
+    COMMAND += f"--mem-size '{mem_size_per_core * num_cores}GB' "
     COMMAND += f"--sys-clock '{sys_clock}' "
     COMMAND += f"--cpu-clock '{sys_clock}' "
     COMMAND += f"--caches "
@@ -186,11 +202,13 @@ def add_command_run_MAA(directory,
     if do_prefetch:
         COMMAND += f"--l1d-hwp-type={l1d_hwp_type} "
     COMMAND += f"--l1d_mshrs={l1d_mshrs} "
+    COMMAND += f"--l1d_write_buffers={l1d_write_buffers} "
     COMMAND += f"--l1i_size={l1i_size} "
     COMMAND += f"--l1i_assoc={l1i_assoc} "
     if do_prefetch:
         COMMAND += f"--l1i-hwp-type={l1i_hwp_type} "
     COMMAND += f"--l1i_mshrs={l1i_mshrs} "
+    COMMAND += f"--l1i_write_buffers={l1i_write_buffers} "
     COMMAND += f"--l2cache "
     COMMAND += f"--l2_size={l2_size} "
     COMMAND += f"--l2_assoc={l2_assoc} "
@@ -199,16 +217,19 @@ def add_command_run_MAA(directory,
         if l2_hwp_type == "DiffMatchingPrefetcher":
             COMMAND += f"--dmp-notify l1 "
     COMMAND += f"--l2_mshrs={l2_mshrs} "
+    COMMAND += f"--l2_write_buffers={l2_write_buffers} "
     COMMAND += f"--l3cache "
     COMMAND += f"--l3_size={l3_size} "
     COMMAND += f"--l3_assoc={l3_assoc} "
-    COMMAND += f"--l3_mshrs={l3_mshrs} "
+    COMMAND += f"--l3_mshrs={l3_mshrs_per_core * num_cores} "
+    COMMAND += f"--l3_write_buffers={l3_write_buffers_per_core * num_cores} "
     COMMAND += "--cacheline_size=64 "
     COMMAND += f"--mem-type {mem_type} "
     COMMAND += f"--ramulator-config {ramulator_config} "
     COMMAND += f"--mem-channels {mem_channels} "
     if have_maa or maa_warmer:
         COMMAND += "--maa "
+        COMMAND += f"--maa_num_maas {num_maas} "
         COMMAND += f"--maa_num_tile_elements {tile_size} "
         COMMAND += "--maa_l2_uncacheable "
         COMMAND += "--maa_l3_uncacheable "
@@ -216,7 +237,7 @@ def add_command_run_MAA(directory,
         #     COMMAND += "--maa_reconfigure_row_table "
         # else:
         #     COMMAND += "--maa_num_initial_row_table_slices 4 "
-        COMMAND += "--maa_num_initial_row_table_slices 32 "
+        COMMAND += f"--maa_num_initial_row_table_slices {int(mem_channels * 16)} "
         if do_reorder == False:
             COMMAND += "--maa_no_reorder "
         if force_cache == True:
@@ -286,6 +307,26 @@ if RUN_MICRO:
                                         mode="MAA",
                                         do_reorder=MAA_config['do_reorder'],
                                         force_cache=MAA_config['force_cache'])
+    if DO_SCALING_EXP:
+        for kernel in all_MICRO_kernels:
+            for dtype in all_dtypes:
+                for mode in all_scaling_modes:
+                    for num_cores, num_maas in zip(all_scaling_cores, all_scaling_maas):
+                        options = f"{2000000*num_maas} {mode} {dtype} {kernel}"
+                        checkpoint_id = None
+                        checkpoint_id = add_command_checkpoint(directory=f"{SC_CPT_DIR}/tests/{kernel}/{dtype}/{mode}/{num_cores}",
+                                                                command=f"{GEM5_DIR}/tests/test-progs/MAA/CISC/test_double_{num_cores}C.o",
+                                                                options=options,
+                                                                num_cores=num_cores)
+                        add_command_run_MAA(directory=f"{SC_RSLT_DIR}/tests/{kernel}/{dtype}/{mode}/{num_cores}",
+                                            checkpoint=f"{SC_CPT_DIR}/tests/{kernel}/{dtype}/{mode}/{num_cores}",
+                                            checkpoint_id = checkpoint_id,
+                                            command=f"{GEM5_DIR}/tests/test-progs/MAA/CISC/test_double_{num_cores}C.o",
+                                            options=options,
+                                            mode=mode,
+                                            num_cores=num_cores,
+                                            num_maas=num_maas)
+                    
 
 # add_command_run_MAA(directory=f"{RSLT_DIR}/rmw/allmiss/BAH0/RBH100/CBH0/BGH0/64K_MAA_port",
 #                     checkpoint=f"{CPT_DIR}/rmw/allmiss/BAH0/RBH100/CBH0/BGH0/64K_MAA_port",
@@ -406,24 +447,22 @@ if RUN_MICRO:
 ########################################## NAS ##########################################
 
 if RUN_NAS:
-    all_modes = ["BASE", "MAA", "DMP"]
-
     # General experiments
     if DO_GENERAL_EXP:
         for kernel in all_NAS_kernels:
             for mode in all_modes:
                 file_name = f"{kernel}_maa" if mode == "MAA" else f"{kernel}_base"
-                option = "BASE" if mode == "DMP" else mode
+                options = "BASE" if mode == "DMP" else mode
                 size = "c" if kernel == "cg" else "b"
                 checkpoint_id = None
                 checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/{kernel}/{mode}/{size}",
                                                         command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/NAS/{kernel}/{file_name}",
-                                                        options=option)
+                                                        options=options)
                 add_command_run_MAA(directory=f"{RSLT_DIR}/{kernel}/{mode}/{size}",
                                     checkpoint=f"{CPT_DIR}/{kernel}/{mode}/{size}",
                                     checkpoint_id = checkpoint_id,
                                     command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/NAS/{kernel}/{file_name}",
-                                    options=option,
+                                    options=options,
                                     mode=mode)
 
     # Reordering and force cache experiments
@@ -464,18 +503,38 @@ if RUN_NAS:
                                     options="MAA",
                                     mode="MAA",
                                     tile_size=tile_size)
+    
+    # Scaling experiments
+    if DO_SCALING_EXP:
+        for kernel in all_NAS_kernels:
+            for mode in all_scaling_modes:
+                for num_cores, num_maas in zip(all_scaling_cores, all_scaling_maas):
+                    file_name = f"{kernel}_maa_{num_cores}C" if mode == "MAA" else f"{kernel}_base_{num_cores}C"
+                    size = "c" if kernel == "cg" else "b"
+                    options = "BASE" if mode == "DMP" else mode
+                    checkpoint_id = None
+                    checkpoint_id = add_command_checkpoint(directory=f"{SC_CPT_DIR}/{kernel}/{mode}/{size}/{num_cores}",
+                                                            command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/NAS/{kernel}/{file_name}",
+                                                            options=options,
+                                                            num_cores=num_cores)
+                    add_command_run_MAA(directory=f"{SC_RSLT_DIR}/{kernel}/{mode}/{size}/{num_cores}",
+                                        checkpoint=f"{SC_CPT_DIR}/{kernel}/{mode}/{size}/{num_cores}",
+                                        checkpoint_id = checkpoint_id,
+                                        command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/NAS/{kernel}/{file_name}",
+                                        options=options,
+                                        mode=mode,
+                                        num_cores=num_cores,
+                                        num_maas=num_maas)
         
 ########################################## GAPB ##########################################
 
 if RUN_GAPB:
-    all_modes = ["BASE", "MAA", "DMP"]
-
     # General experiments
     if DO_GENERAL_EXP:
         for kernel in all_GAPB_kernels:
             for mode in all_modes:
                 size = 20 if kernel == "bc" else 22
-                file_name = f"{kernel}_maa" if mode == "MAA" else f"{kernel}"
+                file_name = f"{kernel}_maa" if mode == "MAA" else kernel
                 graph_ext = "wsg" if kernel == "sssp" else "sg"
                 checkpoint_id = None
                 checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/{kernel}/{mode}/{size}",
@@ -528,12 +587,33 @@ if RUN_GAPB:
                                     options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
                                     mode="MAA",
                                     tile_size=tile_size)
+    
+    # Scaling experiments
+    if DO_SCALING_EXP:
+        for kernel in all_GAPB_kernels:
+            for mode in all_scaling_modes:
+                for num_cores, num_maas in zip(all_scaling_cores, all_scaling_maas):
+                    lsize = 0 if num_maas == 1 else 1 if num_maas == 2 else 2
+                    size = (20+lsize) if kernel == "bc" else (21+lsize) if kernel == "sssp" else (22+lsize)
+                    file_name = f"{kernel}_maa_{num_cores}C" if mode == "MAA" else kernel
+                    graph_ext = "wsg" if kernel == "sssp" else "sg"
+                    checkpoint_id = None
+                    checkpoint_id = add_command_checkpoint(directory=f"{SC_CPT_DIR}/{kernel}/{mode}/{size}/{num_cores}",
+                                                            command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
+                                                            options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
+                                                            num_cores=num_cores)
+                    add_command_run_MAA(directory=f"{SC_RSLT_DIR}/{kernel}/{mode}/{size}/{num_cores}",
+                                        checkpoint=f"{SC_CPT_DIR}/{kernel}/{mode}/{size}/{num_cores}",
+                                        checkpoint_id = checkpoint_id,
+                                        command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
+                                        options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
+                                        mode=mode,
+                                        num_cores=num_cores,
+                                        num_maas=num_maas)
 
 # ########################################## SPATTER ##########################################
 
 if RUN_SPATTER:
-    all_modes = ["MAA", "BASE", "DMP"]
-
     # General experiments
     if DO_GENERAL_EXP:
         for kernel in all_SPATTER_kernels:
@@ -589,6 +669,26 @@ if RUN_SPATTER:
                                     options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/tests/test-data/{kernel}/all.json",
                                     mode="MAA",
                                     tile_size=tile_size)
+    
+    # Scaling experiments
+    if DO_SCALING_EXP:
+        for kernel in all_SPATTER_kernels:
+            for mode in all_scaling_modes:
+                for num_cores, num_maas in zip(all_scaling_cores, all_scaling_maas):
+                    file_name = f"spatter_maa_{num_cores}C" if mode == "MAA" else "spatter_base"
+                    checkpoint_id = None
+                    checkpoint_id = add_command_checkpoint(directory=f"{SC_CPT_DIR}/spatter/{kernel}/{mode}/{num_cores}",
+                                                            command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/build/{file_name}",
+                                                            options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/tests/test-data/{kernel}/all.json",
+                                                            num_cores=num_cores)
+                    add_command_run_MAA(directory=f"{SC_RSLT_DIR}/spatter/{kernel}/{mode}/{num_cores}",
+                                        checkpoint=f"{SC_CPT_DIR}/spatter/{kernel}/{mode}/{num_cores}",
+                                        checkpoint_id = checkpoint_id,
+                                        command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/build/{file_name}",
+                                        options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/tests/test-data/{kernel}/all.json",
+                                        mode=mode,
+                                        num_cores=num_cores,
+                                        num_maas=num_maas)
 
 # ######################################### HASHJOIN ##########################################
 
@@ -598,8 +698,8 @@ if RUN_SPATTER:
 # os.system(f"cp {GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin-ph-2/relS_8M.dat ./")
 
 if RUN_HASHJOIN:
-    all_modes = ["MAA", "BASE", "DMP"]
     size = 2000000
+    size_per_core = 500000
     size_str = "2M"
 
     # General experiments
@@ -657,13 +757,35 @@ if RUN_HASHJOIN:
                                     options=f"-a {kernel} -n 4 -r {size} -s {size}",
                                     mode="MAA",
                                     tile_size=tile_size)
+    
+    # Scaling experiments
+    if DO_SCALING_EXP:
+        for kernel in all_HASHJOIN_kernels:
+            for mode in all_scaling_modes:
+                for num_cores, num_maas in zip(all_scaling_cores, all_scaling_maas):
+                    file_name = f"hj_maa_{num_cores}C" if mode == "MAA" else "hj_base"
+                    csize = size_per_core * num_cores
+                    csize_str = f"{int(csize/1000000)}M"
+                    checkpoint_id = None
+                    checkpoint_id = add_command_checkpoint(directory=f"{SC_CPT_DIR}/{kernel}/{mode}/{csize_str}/{num_cores}",
+                                                            command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin/src/bin/x86/{file_name}",
+                                                            options=f"-a {kernel} -n {num_cores} -r {csize} -s {csize}",
+                                                            num_cores=num_cores)
+                    add_command_run_MAA(directory=f"{SC_RSLT_DIR}/{kernel}/{mode}/{csize_str}/{num_cores}",
+                                        checkpoint=f"{SC_CPT_DIR}/{kernel}/{mode}/{csize_str}/{num_cores}",
+                                        checkpoint_id = checkpoint_id,
+                                        command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin/src/bin/x86/{file_name}",
+                                        options=f"-a {kernel} -n {num_cores} -r {csize} -s {csize}",
+                                        mode=mode,
+                                        num_cores=num_cores,
+                                        num_maas=num_maas)
 
 
 ########################################## UME ##########################################
 
 if RUN_UME:
-    all_modes = ["MAA", "BASE", "DMP"]
     size = 2000000
+    size_per_core = 500000
     size_str = "2M"
 
     # General experiments
@@ -721,6 +843,28 @@ if RUN_UME:
                                     options=f"{size}",
                                     mode="MAA",
                                     tile_size=tile_size)
+    
+    # Scaling experiments
+    if DO_SCALING_EXP:
+        for kernel in all_UME_kernels:
+            for mode in all_scaling_modes:
+                for num_cores, num_maas in zip(all_scaling_cores, all_scaling_maas):
+                    file_name = f"{kernel}_maa_{num_cores}C" if mode == "MAA" else f"{kernel}_base"
+                    csize = size_per_core * num_cores
+                    csize_str = f"{int(csize/1000000)}M"
+                    checkpoint_id = None
+                    checkpoint_id = add_command_checkpoint(directory=f"{SC_CPT_DIR}/{kernel}/{mode}/{csize_str}/{num_cores}",
+                                                            command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/UME/{file_name}",
+                                                            options=f"{csize}",
+                                                            num_cores=num_cores)
+                    add_command_run_MAA(directory=f"{SC_RSLT_DIR}/{kernel}/{mode}/{csize_str}/{num_cores}",
+                                        checkpoint=f"{SC_CPT_DIR}/{kernel}/{mode}/{csize_str}/{num_cores}",
+                                        checkpoint_id = checkpoint_id,
+                                        command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/UME/{file_name}",
+                                        options=f"{csize}",
+                                        mode=mode,
+                                        num_cores=num_cores,
+                                        num_maas=num_maas)
 
 ########################################## RUN SELECTED EXPERIMENTS ##########################################
 if parallelism != 0:

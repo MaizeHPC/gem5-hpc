@@ -94,6 +94,8 @@ void Cache::satisfyRequest(PacketPtr pkt, CacheBlk *blk,
                 if (blk->isSet(CacheBlk::DirtyBit)) {
                     pkt->setCacheResponding();
                     blk->clearCoherenceBits(CacheBlk::DirtyBit);
+                    DPRINTF(Cache, "%s 1- Clearing dirty bit for packet %s block %s\n",
+                            __func__, pkt->print(), blk->print());
                 }
             } else if (blk->isSet(CacheBlk::WritableBit) &&
                        !pending_downgrade && !pkt->hasSharers() &&
@@ -131,6 +133,8 @@ void Cache::satisfyRequest(PacketPtr pkt, CacheBlk *blk,
                         // and first snoop upwards in all other
                         // branches
                         blk->clearCoherenceBits(CacheBlk::DirtyBit);
+                        DPRINTF(Cache, "%s 2- Clearing dirty bit for packet %s block %s\n",
+                                __func__, pkt->print(), blk->print());
                     } else {
                         // if we're responding after our own miss,
                         // there's a window where the recipient didn't
@@ -237,14 +241,14 @@ void Cache::doWritebacksAtomic(PacketList &writebacks) {
                 // below. We can discard CleanEvicts because cached
                 // copies exist above. Atomic mode isCachedAbove
                 // modifies packet to set BLOCK_CACHED flag
-                memSidePort.sendAtomic(wbPkt);
+                memSidePorts[getMemSidePortID(wbPkt)]->sendAtomic(wbPkt);
             }
         } else {
             // If the block is not cached above, send packet below. Both
             // CleanEvict and Writeback with BLOCK_CACHED flag cleared will
             // reset the bit corresponding to this address in the snoop filter
             // below.
-            memSidePort.sendAtomic(wbPkt);
+            memSidePorts[getMemSidePortID(wbPkt)]->sendAtomic(wbPkt);
         }
         writebacks.pop_front();
         // In case of CleanEvicts, the packet destructor will delete the
@@ -284,7 +288,7 @@ void Cache::recvTimingSnoopResp(PacketPtr pkt) {
     Tick snoop_resp_time = clockEdge(forwardLatency) + pkt->headerDelay;
     // Reset the timing of the packet.
     pkt->headerDelay = pkt->payloadDelay = 0;
-    memSidePort.schedTimingSnoopResp(pkt, snoop_resp_time);
+    memSidePorts[getMemSidePortID(pkt)]->schedTimingSnoopResp(pkt, snoop_resp_time);
 }
 
 void Cache::promoteWholeLineWrites(PacketPtr pkt) {
@@ -352,7 +356,7 @@ void Cache::handleTimingReqMiss(PacketPtr pkt, CacheBlk *blk, Tick forward_time,
 
     Addr blk_addr = pkt->getBlockAddr(blkSize);
 
-    MSHR *mshr = mshrQueue.findMatch(blk_addr, pkt->isSecure());
+    MSHR *mshr = mshrQueues[getMemSidePortID(pkt)]->findMatch(blk_addr, pkt->isSecure());
 
     // Software prefetch handling:
     // To keep the core from waiting on data it won't look at
@@ -452,7 +456,7 @@ void Cache::recvTimingReq(PacketPtr pkt) {
         // this express snoop travels towards the memory, and at
         // every crossbar it is snooped upwards thus reaching
         // every cache in the system
-        [[maybe_unused]] bool success = memSidePort.sendTimingReq(snoop_pkt);
+        [[maybe_unused]] bool success = memSidePorts[getMemSidePortID(snoop_pkt)]->sendTimingReq(snoop_pkt);
         // express snoops always succeed
         assert(success);
 
@@ -562,7 +566,7 @@ Cache::handleAtomicReqMiss(PacketPtr pkt, CacheBlk *&blk,
     // the cache, i.e. any evictions and writes
     if (pkt->isEviction() || pkt->cmd == MemCmd::WriteClean ||
         (BaseCache::isUncacheablePkt(pkt) && pkt->isWrite())) {
-        Cycles latency = ticksToCycles(memSidePort.sendAtomic(pkt));
+        Cycles latency = ticksToCycles(memSidePorts[getMemSidePortID(pkt)]->sendAtomic(pkt));
 
         // at this point, if the request was an uncacheable write
         // request, it has been satisfied by a memory below and the
@@ -591,7 +595,7 @@ Cache::handleAtomicReqMiss(PacketPtr pkt, CacheBlk *&blk,
 
     const std::string old_state = blk ? blk->print() : "";
 
-    Cycles latency = ticksToCycles(memSidePort.sendAtomic(bus_pkt));
+    Cycles latency = ticksToCycles(memSidePorts[getMemSidePortID(bus_pkt)]->sendAtomic(bus_pkt));
 
     bool is_invalidate = bus_pkt->isInvalidate();
 
@@ -659,7 +663,7 @@ Tick Cache::recvAtomic(PacketPtr pkt) {
         // copies that are not on the same path to memory
         assert(pkt->needsWritable() && !pkt->responderHadWritable());
 
-        return memSidePort.sendAtomic(pkt);
+        return memSidePorts[getMemSidePortID(pkt)]->sendAtomic(pkt);
     }
 
     return BaseCache::recvAtomic(pkt);
@@ -951,6 +955,8 @@ Cache::cleanEvictBlk(CacheBlk *blk) {
     assert(!writebackClean);
     assert(blk && blk->isValid() && !blk->isSet(CacheBlk::DirtyBit));
 
+    DPRINTF(Cache, "%s for %s\n", __func__, blk->print());
+
     // Creating a zero sized write, a message to the snoop filter
     RequestPtr req = std::make_shared<Request>(
         regenerateBlkAddr(blk), blkSize, 0, Request::wbRequestorId);
@@ -1014,7 +1020,7 @@ void Cache::doTimingSupplyResponse(PacketPtr req_pkt, const uint8_t *blk_data,
     pkt->headerDelay = pkt->payloadDelay = 0;
     DPRINTF(CacheVerbose, "%s: created response: %s tick: %lu\n", __func__,
             pkt->print(), forward_time);
-    memSidePort.schedTimingSnoopResp(pkt, forward_time);
+    memSidePorts[getMemSidePortID(pkt)]->schedTimingSnoopResp(pkt, forward_time);
 }
 
 uint32_t
@@ -1253,7 +1259,7 @@ void Cache::recvTimingSnoopReq(PacketPtr pkt) {
     CacheBlk *blk = tags->findBlock(pkt->getAddr(), is_secure);
 
     Addr blk_addr = pkt->getBlockAddr(blkSize);
-    MSHR *mshr = mshrQueue.findMatch(blk_addr, is_secure);
+    MSHR *mshr = mshrQueues[getMemSidePortID(pkt)]->findMatch(blk_addr, is_secure);
 
     // Update the latency cost of the snoop so that the crossbar can
     // account for it. Do not overwrite what other neighbouring caches
@@ -1287,7 +1293,7 @@ void Cache::recvTimingSnoopReq(PacketPtr pkt) {
     }
 
     //We also need to check the writeback buffers and handle those
-    WriteQueueEntry *wb_entry = writeBuffer.findMatch(blk_addr, is_secure);
+    WriteQueueEntry *wb_entry = writeBuffers[getMemSidePortID(pkt)]->findMatch(blk_addr, is_secure);
     if (wb_entry) {
         DPRINTF(Cache, "Snoop hit in writeback to addr %#llx (%s)\n",
                 pkt->getAddr(), is_secure ? "s" : "ns");
@@ -1457,10 +1463,15 @@ bool Cache::sendMSHRQueuePacket(MSHR *mshr) {
                     mshr->blkAddr);
 
             // Deallocate the mshr target
-            if (mshrQueue.forceDeallocateTarget(mshr)) {
+            uint8_t port_id = getMemSidePortID(tgt_pkt);
+            bool was_full = mshrQueues[port_id]->isFull();
+            if (mshrQueues[port_id]->forceDeallocateTarget(mshr)) {
                 // Clear block if this deallocation resulted freed an
                 // mshr when all had previously been utilized
-                clearBlocked(Blocked_NoMSHRs);
+                if (was_full && !mshrQueues[port_id]->isFull()) {
+                    DPRINTF(Cache, "5- Unblocking...\n");
+                    clearBlocked(Blocked_NoMSHRs);
+                }
             }
 
             // given that no response is expected, delete Request and Packet

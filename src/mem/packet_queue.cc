@@ -198,6 +198,7 @@ void PacketQueue::sendDeferredPacket() {
         schedSendEvent(deferredPacketReadyTime());
     } else {
         // put the packet back at the front of the list
+        DPRINTF(PacketQueue, "Failed, waiting for retry\n");
         transmitList.emplace_front(dp);
     }
 }

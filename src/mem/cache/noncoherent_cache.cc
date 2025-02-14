@@ -56,19 +56,15 @@
 #include "mem/cache/mshr.hh"
 #include "params/NoncoherentCache.hh"
 
-namespace gem5
-{
+namespace gem5 {
 
 NoncoherentCache::NoncoherentCache(const NoncoherentCacheParams &p)
-    : BaseCache(p, p.system->cacheLineSize())
-{
+    : BaseCache(p, p.system->cacheLineSize()) {
     assert(p.tags);
     assert(p.replacement_policy);
 }
 
-void
-NoncoherentCache::satisfyRequest(PacketPtr pkt, CacheBlk *blk, bool, bool)
-{
+void NoncoherentCache::satisfyRequest(PacketPtr pkt, CacheBlk *blk, bool, bool) {
     // As this a non-coherent cache located below the point of
     // coherency, we do not expect requests that are typically used to
     // keep caches coherent (e.g., InvalidateReq or UpdateReq).
@@ -76,10 +72,8 @@ NoncoherentCache::satisfyRequest(PacketPtr pkt, CacheBlk *blk, bool, bool)
     BaseCache::satisfyRequest(pkt, blk);
 }
 
-bool
-NoncoherentCache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
-                         PacketList &writebacks)
-{
+bool NoncoherentCache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
+                              PacketList &writebacks) {
     bool success = BaseCache::access(pkt, blk, lat, writebacks);
 
     if (pkt->isWriteback() || pkt->cmd == MemCmd::WriteClean) {
@@ -94,9 +88,7 @@ NoncoherentCache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
     return success;
 }
 
-void
-NoncoherentCache::doWritebacks(PacketList& writebacks, Tick forward_time)
-{
+void NoncoherentCache::doWritebacks(PacketList &writebacks, Tick forward_time) {
     while (!writebacks.empty()) {
         PacketPtr wb_pkt = writebacks.front();
         allocateWriteBuffer(wb_pkt, forward_time);
@@ -104,24 +96,20 @@ NoncoherentCache::doWritebacks(PacketList& writebacks, Tick forward_time)
     }
 }
 
-void
-NoncoherentCache::doWritebacksAtomic(PacketList& writebacks)
-{
+void NoncoherentCache::doWritebacksAtomic(PacketList &writebacks) {
     while (!writebacks.empty()) {
         PacketPtr wb_pkt = writebacks.front();
-        memSidePort.sendAtomic(wb_pkt);
+        memSidePorts[getMemSidePortID(wb_pkt)]->sendAtomic(wb_pkt);
         writebacks.pop_front();
         delete wb_pkt;
     }
 }
 
-void
-NoncoherentCache::handleTimingReqMiss(PacketPtr pkt, CacheBlk *blk,
-                                      Tick forward_time, Tick request_time)
-{
+void NoncoherentCache::handleTimingReqMiss(PacketPtr pkt, CacheBlk *blk,
+                                           Tick forward_time, Tick request_time) {
     // miss
     Addr blk_addr = pkt->getBlockAddr(blkSize);
-    MSHR *mshr = mshrQueue.findMatch(blk_addr, pkt->isSecure(), false);
+    MSHR *mshr = mshrQueues[getMemSidePortID(pkt)]->findMatch(blk_addr, pkt->isSecure(), false);
 
     // We can always write to a non coherent cache if the block is
     // present and therefore if we have reached this point then the
@@ -131,11 +119,9 @@ NoncoherentCache::handleTimingReqMiss(PacketPtr pkt, CacheBlk *blk,
     BaseCache::handleTimingReqMiss(pkt, mshr, blk, forward_time, request_time);
 }
 
-void
-NoncoherentCache::recvTimingReq(PacketPtr pkt)
-{
+void NoncoherentCache::recvTimingReq(PacketPtr pkt) {
     panic_if(pkt->cacheResponding(), "Should not see packets where cache "
-             "is responding");
+                                     "is responding");
 
     panic_if(!(pkt->isRead() || pkt->isWrite()),
              "Should only see read and writes at non-coherent cache\n");
@@ -146,8 +132,7 @@ NoncoherentCache::recvTimingReq(PacketPtr pkt)
 PacketPtr
 NoncoherentCache::createMissPacket(PacketPtr cpu_pkt, CacheBlk *blk,
                                    bool needs_writable,
-                                   bool is_whole_line_write) const
-{
+                                   bool is_whole_line_write) const {
     // We also fill for writebacks from the coherent caches above us,
     // and they do not need responses
     assert(cpu_pkt->needsResponse());
@@ -166,16 +151,14 @@ NoncoherentCache::createMissPacket(PacketPtr cpu_pkt, CacheBlk *blk,
     return pkt;
 }
 
-
 Cycles
 NoncoherentCache::handleAtomicReqMiss(PacketPtr pkt, CacheBlk *&blk,
-                                      PacketList &writebacks)
-{
+                                      PacketList &writebacks) {
     PacketPtr bus_pkt = createMissPacket(pkt, blk, true,
                                          pkt->isWholeLineWrite(blkSize));
     DPRINTF(Cache, "Sending an atomic %s\n", bus_pkt->print());
 
-    Cycles latency = ticksToCycles(memSidePort.sendAtomic(bus_pkt));
+    Cycles latency = ticksToCycles(memSidePorts[getMemSidePortID(bus_pkt)]->sendAtomic(bus_pkt));
 
     assert(bus_pkt->isResponse());
     // At the moment the only supported downstream requests we issue
@@ -216,11 +199,9 @@ NoncoherentCache::handleAtomicReqMiss(PacketPtr pkt, CacheBlk *&blk,
     return latency;
 }
 
-Tick
-NoncoherentCache::recvAtomic(PacketPtr pkt)
-{
+Tick NoncoherentCache::recvAtomic(PacketPtr pkt) {
     panic_if(pkt->cacheResponding(), "Should not see packets where cache "
-             "is responding");
+                                     "is responding");
 
     panic_if(!(pkt->isRead() || pkt->isWrite()),
              "Should only see read and writes at non-coherent cache\n");
@@ -228,20 +209,15 @@ NoncoherentCache::recvAtomic(PacketPtr pkt)
     return BaseCache::recvAtomic(pkt);
 }
 
-
-void
-NoncoherentCache::functionalAccess(PacketPtr pkt, bool from_cpu_side)
-{
+void NoncoherentCache::functionalAccess(PacketPtr pkt, bool from_cpu_side) {
     panic_if(!from_cpu_side, "Non-coherent cache received functional snoop"
-            " request\n");
+                             " request\n");
 
     BaseCache::functionalAccess(pkt, from_cpu_side);
 }
 
-void
-NoncoherentCache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt,
-                                     CacheBlk *blk)
-{
+void NoncoherentCache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt,
+                                          CacheBlk *blk) {
     // First offset for critical word first calculations
     const int initial_offset = mshr->getTarget()->pkt->getOffset(blkSize);
 
@@ -249,11 +225,11 @@ NoncoherentCache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt,
     bool from_pref = false;
 
     MSHR::TargetList targets = mshr->extractServiceableTargets(pkt);
-    for (auto &target: targets) {
+    for (auto &target : targets) {
         Packet *tgt_pkt = target.pkt;
 
         switch (target.source) {
-          case MSHR::Target::FromCPU:
+        case MSHR::Target::FromCPU:
             // handle deferred requests comming from a cache or core
             // above
 
@@ -277,7 +253,7 @@ NoncoherentCache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt,
             // from lower level caches/memory to an upper level cache or
             // the core.
             completion_time += clockEdge(responseLatency) +
-                (transfer_offset ? pkt->payloadDelay : 0);
+                               (transfer_offset ? pkt->payloadDelay : 0);
 
             assert(tgt_pkt->req->requestorId() < system->maxRequestors());
             stats.cmdStats(tgt_pkt).missLatency[tgt_pkt->req->requestorId()] +=
@@ -292,7 +268,7 @@ NoncoherentCache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt,
             cpuSidePort.schedTimingResp(tgt_pkt, completion_time);
             break;
 
-          case MSHR::Target::FromPrefetcher:
+        case MSHR::Target::FromPrefetcher:
             // handle deferred requests comming from a prefetcher
             // attached to this cache
             assert(tgt_pkt->cmd == MemCmd::HardPFReq);
@@ -304,7 +280,7 @@ NoncoherentCache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt,
             delete tgt_pkt;
             break;
 
-          default:
+        default:
             // we should never see FromSnoop Targets as this is a
             // non-coherent cache
             panic("Illegal target->source enum %d\n", target.source);
@@ -322,9 +298,7 @@ NoncoherentCache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt,
     assert(mshr->getNumTargets() == 0);
 }
 
-void
-NoncoherentCache::recvTimingResp(PacketPtr pkt)
-{
+void NoncoherentCache::recvTimingResp(PacketPtr pkt) {
     assert(pkt->isResponse());
     // At the moment the only supported downstream requests we issue
     // are ReadReq and therefore here we should only see the
@@ -341,8 +315,7 @@ NoncoherentCache::recvTimingResp(PacketPtr pkt)
 }
 
 PacketPtr
-NoncoherentCache::evictBlock(CacheBlk *blk)
-{
+NoncoherentCache::evictBlock(CacheBlk *blk) {
     // A dirty block is always written back.
 
     // A clean block can we written back, if we turned on writebacks
@@ -354,8 +327,7 @@ NoncoherentCache::evictBlock(CacheBlk *blk)
     // If we clean writebacks are not enabled, we do not take any
     // further action for evictions of clean blocks (i.e., CleanEvicts
     // are unnecessary).
-    PacketPtr pkt = (blk->isSet(CacheBlk::DirtyBit) || writebackClean) ?
-        writebackBlk(blk) : nullptr;
+    PacketPtr pkt = (blk->isSet(CacheBlk::DirtyBit) || writebackClean) ? writebackBlk(blk) : nullptr;
 
     invalidateBlock(blk);
 

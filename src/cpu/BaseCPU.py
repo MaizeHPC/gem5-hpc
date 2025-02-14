@@ -195,14 +195,14 @@ class BaseCPU(ClockedObject):
         self.dcache = dc
         self.icache_port = ic.cpu_side
         self.dcache_port = dc.cpu_side
-        self._cached_ports = ["icache.mem_side", "dcache.mem_side"]
+        self._cached_ports = ["icache.mem_sides[0]", "dcache.mem_sides[0]"]
         if iwc and dwc:
             self.itb_walker_cache = iwc
             self.dtb_walker_cache = dwc
             self.mmu.connectWalkerPorts(iwc.cpu_side, dwc.cpu_side)
             self._cached_ports += [
-                "itb_walker_cache.mem_side",
-                "dtb_walker_cache.mem_side",
+                "itb_walker_cache.mem_sides[0]",
+                "dtb_walker_cache.mem_sides[0]",
             ]
         else:
             self._cached_ports += self.ArchMMU.walkerPorts()
@@ -220,7 +220,7 @@ class BaseCPU(ClockedObject):
         self.connectCachedPorts(self.toL2Bus.cpu_side_ports)
         self.l2cache = l2c
         self.toL2Bus.mem_side_ports = self.l2cache.cpu_side
-        self._cached_ports = ["l2cache.mem_side"]
+        self._cached_ports = ["l2cache.mem_sides[0]"]
     
     def createThreads(self):
         # If no ISAs have been created, assume that the user wants the
