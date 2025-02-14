@@ -395,7 +395,7 @@ void Cache::handleTimingReqMiss(PacketPtr pkt, CacheBlk *blk, Tick forward_time,
 
         // request_time is used here, taking into account lat and the delay
         // charged if the packet comes from the xbar.
-        cpuSidePort.schedTimingResp(pkt, request_time);
+        cpuSidePorts[getMemSidePortID(pkt)]->schedTimingResp(pkt, request_time);
 
         // If an outstanding request is in progress (we found an
         // MSHR) this is set to null
@@ -881,7 +881,7 @@ void Cache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk) {
             }
             // Reset the bus additional time as it is now accounted for
             tgt_pkt->headerDelay = tgt_pkt->payloadDelay = 0;
-            cpuSidePort.schedTimingResp(tgt_pkt, completion_time);
+            cpuSidePorts[getMemSidePortID(tgt_pkt)]->schedTimingResp(tgt_pkt, completion_time);
             break;
 
         case MSHR::Target::FromPrefetcher:
@@ -1062,7 +1062,7 @@ Cache::handleSnoop(PacketPtr pkt, CacheBlk *blk, bool is_timing,
             // the snoop packet does not need to wait any additional
             // time
             snoopPkt.headerDelay = snoopPkt.payloadDelay = 0;
-            cpuSidePort.sendTimingSnoopReq(&snoopPkt);
+            cpuSidePorts[getMemSidePortID(&snoopPkt)]->sendTimingSnoopReq(&snoopPkt);
 
             // add the header delay (including crossbar and snoop
             // delays) of the upward snoop to the snoop delay for this
@@ -1086,7 +1086,7 @@ Cache::handleSnoop(PacketPtr pkt, CacheBlk *blk, bool is_timing,
             pkt->copyResponderFlags(&snoopPkt);
         } else {
             bool already_responded = pkt->cacheResponding();
-            cpuSidePort.sendAtomicSnoop(pkt);
+            cpuSidePorts[getMemSidePortID(pkt)]->sendAtomicSnoop(pkt);
             if (!already_responded && pkt->cacheResponding()) {
                 // cache-to-cache response from some upper cache:
                 // forward response to original requestor
@@ -1393,12 +1393,12 @@ bool Cache::isCachedAbove(PacketPtr pkt, bool is_timing) {
         // generate a snoop response.
         assert(pkt->isEviction() || pkt->cmd == MemCmd::WriteClean);
         snoop_pkt.senderState = nullptr;
-        cpuSidePort.sendTimingSnoopReq(&snoop_pkt);
+        cpuSidePorts[getMemSidePortID(&snoop_pkt)]->sendTimingSnoopReq(&snoop_pkt);
         // Writeback/CleanEvict snoops do not generate a snoop response.
         assert(!(snoop_pkt.cacheResponding()));
         return snoop_pkt.isBlockCached();
     } else {
-        cpuSidePort.sendAtomicSnoop(pkt);
+        cpuSidePorts[getMemSidePortID(pkt)]->sendAtomicSnoop(pkt);
         return pkt->isBlockCached();
     }
 }
@@ -1428,7 +1428,7 @@ bool Cache::sendMSHRQueuePacket(MSHR *mshr) {
         // normal response, hence it needs the MSHR as its sender
         // state
         snoop_pkt.senderState = mshr;
-        cpuSidePort.sendTimingSnoopReq(&snoop_pkt);
+        cpuSidePorts[getMemSidePortID(&snoop_pkt)]->sendTimingSnoopReq(&snoop_pkt);
 
         // Check to see if the prefetch was squashed by an upper cache (to
         // prevent us from grabbing the line) or if a Check to see if a

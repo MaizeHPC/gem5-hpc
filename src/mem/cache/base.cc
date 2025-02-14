@@ -81,7 +81,6 @@ BaseCache::CacheResponsePort::CacheResponsePort(const std::string &_name,
 
 BaseCache::BaseCache(const BaseCacheParams &p, unsigned blk_size)
     : ClockedObject(p),
-      cpuSidePort(p.name + ".cpu_side_port", *this, "CpuSidePort"),
       accessor(*this),
       tags(p.tags),
       compressor(p.compressor),
@@ -127,6 +126,12 @@ BaseCache::BaseCache(const BaseCacheParams &p, unsigned blk_size)
     }
 
     numMemSidePorts = p.port_mem_sides_connection_count;
+    numCpuSidePorts = p.port_cpu_sides_connection_count;
+    panic_if(numCpuSidePorts != numMemSidePorts, "Number of CPU side ports "
+                                                 "(%d) must be equal to the number of memory side ports (%d)\n",
+             numCpuSidePorts, numMemSidePorts);
+    panic_if(numMemSidePorts < 1 || (numMemSidePorts & (numMemSidePorts - 1)) != 0,
+             "Number of memory side ports (%d) must be a power of 2\n", numMemSidePorts);
     unsigned int remaining = p.mshrs % numMemSidePorts;
     panic_if(remaining != 0,
              "Number of MSHRs (%d) must be a multiple of the number of "
@@ -140,12 +145,28 @@ BaseCache::BaseCache(const BaseCacheParams &p, unsigned blk_size)
              p.write_buffers, numMemSidePorts);
     unsigned int write_buffers_per_port = p.write_buffers / numMemSidePorts;
     for (int i = 0; i < numMemSidePorts; ++i) {
-        std::string portName = csprintf("%s.mem_side_port[%d]", p.name, i);
-        memSidePorts.push_back(new MemSidePort(portName, this, "MemSidePort", i));
+        std::string memPortName = csprintf("%s.mem_side_port[%d]", p.name, i);
+        memSidePorts.push_back(new MemSidePort(memPortName, this, "MemSidePort", i));
+        std::string cpuPportName = csprintf("%s.cpu_side_port[%d]", p.name, i);
+        cpuSidePorts.push_back(new CpuSidePort(cpuPportName, *this, "CpuSidePort", i));
+        cpuPortAddrRanges.push_back(AddrRangeList());
         std::string mshrName = csprintf("MSHRs[%d]", i);
         mshrQueues.push_back(new MSHRQueue(mshrName, mshrs_per_port, 0, p.demand_mshr_reserve, p.name));
         std::string writeBufferName = csprintf("WriteBuffers[%d]", i);
         writeBuffers.push_back(new WriteQueue(writeBufferName, write_buffers_per_port, mshrs_per_port, p.name));
+    }
+    for (AddrRange range : addrRanges) {
+        Addr start = range.start();
+        Addr end = range.end();
+        std::vector<Addr> mask;
+        Addr curr_mask = blkSize;
+        for (int i = 0; i < log2(numMemSidePorts); i++) {
+            mask.push_back(curr_mask);
+            curr_mask = curr_mask << 1;
+        }
+        for (int i = 0; i < numMemSidePorts; ++i) {
+            cpuPortAddrRanges[i].push_back(AddrRange(start, end, mask, i));
+        }
     }
 
     tempBlock = new TempCacheBlk(blkSize);
@@ -209,18 +230,20 @@ Addr BaseCache::regenerateBlkAddr(CacheBlk *blk) {
 }
 
 void BaseCache::init() {
-    if (!cpuSidePort.isConnected())
-        fatal("Cache ports on %s are not connected\n", name());
-    cpuSidePort.sendRangeChange();
-    forwardSnoops = cpuSidePort.isSnooping();
+    for (auto port : cpuSidePorts) {
+        if (!port->isConnected())
+            fatal("Cache ports on %s are not connected\n", name());
+        port->sendRangeChange();
+    }
+    forwardSnoops = cpuSidePorts[0]->isSnooping();
 }
 
 Port &
 BaseCache::getPort(const std::string &if_name, PortID idx) {
     if (if_name == "mem_sides" && idx < memSidePorts.size()) {
         return *memSidePorts[idx];
-    } else if (if_name == "cpu_side") {
-        return cpuSidePort;
+    } else if (if_name == "cpu_sides" && idx < cpuSidePorts.size()) {
+        return *cpuSidePorts[idx];
     } else {
         return ClockedObject::getPort(if_name, idx);
     }
@@ -320,7 +343,7 @@ void BaseCache::handleTimingReqHit(PacketPtr pkt, CacheBlk *blk, Tick request_ti
         // just as the value of lat overriden by access(), which calls
         // the calculateAccessLatency() function.
         DPRINTF(Cache, "%s for %s in %llu ticks\n", __func__, pkt->print(), request_time);
-        cpuSidePort.schedTimingResp(pkt, request_time);
+        cpuSidePorts[getMemSidePortID(pkt)]->schedTimingResp(pkt, request_time);
     } else {
         DPRINTF(Cache, "%s satisfied %s, no response needed\n", __func__, pkt->print());
 
@@ -527,7 +550,7 @@ void BaseCache::handleUncacheableWriteResp(PacketPtr pkt) {
     // Reset the bus additional time as it is now accounted for
     pkt->headerDelay = pkt->payloadDelay = 0;
 
-    cpuSidePort.schedTimingResp(pkt, completion_time);
+    cpuSidePorts[getMemSidePortID(pkt)]->schedTimingResp(pkt, completion_time);
 }
 
 void BaseCache::recvTimingResp(PacketPtr pkt) {
@@ -776,7 +799,7 @@ void BaseCache::functionalAccess(PacketPtr pkt, bool from_cpu_side) {
                       (mshr && mshr->inService && mshr->isPendingModified()));
 
     bool done = have_dirty ||
-                cpuSidePort.trySatisfyFunctional(pkt) ||
+                cpuSidePorts[getMemSidePortID(pkt)]->trySatisfyFunctional(pkt) ||
                 mshrQueues[getMemSidePortID(pkt)]->trySatisfyFunctional(pkt) ||
                 writeBuffers[getMemSidePortID(pkt)]->trySatisfyFunctional(pkt) ||
                 memSidePorts[getMemSidePortID(pkt)]->trySatisfyFunctional(pkt);
@@ -795,10 +818,10 @@ void BaseCache::functionalAccess(PacketPtr pkt, bool from_cpu_side) {
         // continues towards the memory side
         if (from_cpu_side) {
             memSidePorts[getMemSidePortID(pkt)]->sendFunctional(pkt);
-        } else if (cpuSidePort.isSnooping()) {
+        } else if (cpuSidePorts[getMemSidePortID(pkt)]->isSnooping()) {
             // if it came from the memory side, it must be a snoop request
             // and we should only forward it if we are forwarding snoops
-            cpuSidePort.sendFunctionalSnoop(pkt);
+            cpuSidePorts[getMemSidePortID(pkt)]->sendFunctionalSnoop(pkt);
         }
     }
 }
@@ -2590,12 +2613,17 @@ bool BaseCache::CpuSidePort::recvTimingSnoopResp(PacketPtr pkt) {
 
     assert(pkt->isResponse());
 
+    panic_if(cache.getMemSidePortID(pkt) != portID,
+             "Packet %s is not meant for cpu side port[%u]", pkt->print(), portID);
+
     // Express snoop responses from requestor to responder, e.g., from L1 to L2
     cache.recvTimingSnoopResp(pkt);
     return true;
 }
 
 bool BaseCache::CpuSidePort::tryTiming(PacketPtr pkt) {
+    panic_if(cache.getMemSidePortID(pkt) != portID,
+             "Packet %s is not meant for cpu side port[%u]", pkt->print(), portID);
     if (cache.system->bypassCaches() || pkt->isExpressSnoop()) {
         // always let express snoop packets through even if blocked
         return true;
@@ -2610,6 +2638,9 @@ bool BaseCache::CpuSidePort::tryTiming(PacketPtr pkt) {
 
 bool BaseCache::CpuSidePort::recvTimingReq(PacketPtr pkt) {
     assert(pkt->isRequest());
+
+    panic_if(cache.getMemSidePortID(pkt) != portID,
+             "Packet %s is not meant for cpu side port[%u]", pkt->print(), portID);
 
     if (!cache.isUncacheablePkt(pkt))
         cache.ppL1Req->notify(CacheAccessProbeArg(pkt, cache.accessor));
@@ -2628,6 +2659,8 @@ bool BaseCache::CpuSidePort::recvTimingReq(PacketPtr pkt) {
 }
 
 Tick BaseCache::CpuSidePort::recvAtomic(PacketPtr pkt) {
+    panic_if(cache.getMemSidePortID(pkt) != portID,
+             "Packet %s is not meant for cpu side port[%u]", pkt->print(), portID);
     if (cache.system->bypassCaches()) {
         // Forward the request if the system is in cache bypass mode.
         return cache.memSidePorts[cache.getMemSidePortID(pkt)]->sendAtomic(pkt);
@@ -2637,6 +2670,8 @@ Tick BaseCache::CpuSidePort::recvAtomic(PacketPtr pkt) {
 }
 
 void BaseCache::CpuSidePort::recvFunctional(PacketPtr pkt) {
+    panic_if(cache.getMemSidePortID(pkt) != portID,
+             "Packet %s is not meant for cpu side port[%u]", pkt->print(), portID);
     if (cache.system->bypassCaches()) {
         // The cache should be flushed if we are in cache bypass mode,
         // so we don't need to check if we need to update anything.
@@ -2650,13 +2685,13 @@ void BaseCache::CpuSidePort::recvFunctional(PacketPtr pkt) {
 
 AddrRangeList
 BaseCache::CpuSidePort::getAddrRanges() const {
-    return cache.getAddrRanges();
+    return cache.getAddrRanges(portID);
 }
 
 BaseCache::
     CpuSidePort::CpuSidePort(const std::string &_name, BaseCache &_cache,
-                             const std::string &_label)
-    : CacheResponsePort(_name, _cache, _label) {
+                             const std::string &_label, const uint8_t _portID)
+    : CacheResponsePort(_name, _cache, _label), portID(_portID) {
 }
 
 ///////////////
@@ -2665,12 +2700,18 @@ BaseCache::
 //
 ///////////////
 bool BaseCache::MemSidePort::recvTimingResp(PacketPtr pkt) {
+    panic_if(cache->getMemSidePortID(pkt) != portID,
+             "Packet %s is not meant for mem side port[%u]", pkt->print(), portID);
+
     cache->recvTimingResp(pkt);
     return true;
 }
 
 // Express snooping requests to memside port
 void BaseCache::MemSidePort::recvTimingSnoopReq(PacketPtr pkt) {
+    panic_if(cache->getMemSidePortID(pkt) != portID,
+             "Packet %s is not meant for mem side port[%u]", pkt->print(), portID);
+
     // Snoops shouldn't happen when bypassing caches
     assert(!cache->system->bypassCaches());
 
@@ -2679,6 +2720,9 @@ void BaseCache::MemSidePort::recvTimingSnoopReq(PacketPtr pkt) {
 }
 
 Tick BaseCache::MemSidePort::recvAtomicSnoop(PacketPtr pkt) {
+    panic_if(cache->getMemSidePortID(pkt) != portID,
+             "Packet %s is not meant for mem side port[%u]", pkt->print(), portID);
+
     // Snoops shouldn't happen when bypassing caches
     assert(!cache->system->bypassCaches());
 
@@ -2686,6 +2730,11 @@ Tick BaseCache::MemSidePort::recvAtomicSnoop(PacketPtr pkt) {
 }
 
 void BaseCache::MemSidePort::recvFunctionalSnoop(PacketPtr pkt) {
+    if (cache->getMemSidePortID(pkt) != portID) {
+        DPRINTF(Cache, "Droping %s as it is not meant for mem side port[%u]", pkt->print(), portID);
+        return;
+    }
+
     // Snoops shouldn't happen when bypassing caches
     assert(!cache->system->bypassCaches());
 

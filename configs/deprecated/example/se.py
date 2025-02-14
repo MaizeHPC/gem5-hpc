@@ -289,7 +289,12 @@ else:
     if args.maa:
         system.membus.width = 32
         system.membusnc = SystemXBarNC()
-        system.membusnc.width = 32
+        if(hasattr(args, "maa_ncbus_width")):
+            width = getattr(args, "maa_ncbus_width")
+            print(f"membusnc width to {width}")
+            system.membusnc.width = width
+        else:
+            system.membusnc.width = 32
         system.membusnc.cpu_side_ports = system.membus.mem_side_ports
 
     if args.caches and args.l2cache and args.l3cache:

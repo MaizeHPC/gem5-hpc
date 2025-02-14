@@ -184,6 +184,8 @@ protected:
          * @param pkt The packet to check for conflicts against.
          */
         bool checkConflictingSnoop(const PacketPtr pkt) {
+            panic_if(cache.getMemSidePortID(pkt) != portID,
+                     "Packet %s is not meant for mem side port[%s]", pkt->print(), portID);
             if (snoopRespQueue.checkConflict(pkt, cache.blkSize)) {
                 DPRINTF(CachePort, "Waiting for snoop response to be "
                                    "sent\n");
@@ -269,6 +271,8 @@ protected:
      */
     class CpuSidePort : public CacheResponsePort {
     protected:
+        const uint8_t portID;
+
         virtual bool recvTimingSnoopResp(PacketPtr pkt) override;
 
         virtual bool tryTiming(PacketPtr pkt) override;
@@ -282,6 +286,8 @@ protected:
         virtual AddrRangeList getAddrRanges() const override;
 
         virtual bool sendTimingResp(PacketPtr pkt) override {
+            panic_if(cache.getMemSidePortID(pkt) != portID,
+                     "Packet %s is not meant for cpu side port[%s]", pkt->print(), portID);
             panic_if(pkt == nullptr, "No packet to send\n");
             bool was_packet_uncacheable = cache.isUncacheablePkt(pkt);
             bool rep_res = CacheResponsePort::sendTimingResp(pkt);
@@ -294,12 +300,13 @@ protected:
 
     public:
         CpuSidePort(const std::string &_name, BaseCache &_cache,
-                    const std::string &_label);
+                    const std::string &_label, const uint8_t _portID);
     };
 
-    CpuSidePort cpuSidePort;
+    std::vector<CpuSidePort *> cpuSidePorts;
     std::vector<MemSidePort *> memSidePorts;
     uint8_t numMemSidePorts;
+    uint8_t numCpuSidePorts;
 
 public:
     uint8_t getMemSidePortID(Addr addr) const {
@@ -989,6 +996,7 @@ protected:
      * The address range to which the cache responds on the CPU side.
      * Normally this is all possible memory addresses. */
     const AddrRangeList addrRanges;
+    std::vector<AddrRangeList> cpuPortAddrRanges;
 
     /**
      * The address range to which the cache does not respond on the CPU side.
@@ -1188,7 +1196,7 @@ public:
         return blkSize;
     }
 
-    const AddrRangeList &getAddrRanges() const { return addrRanges; }
+    const AddrRangeList &getAddrRanges(uint8_t portID) const { return cpuPortAddrRanges[portID]; }
 
     const AddrRangeList &getExclAddrRanges() const { return exclAddrRanges; }
 
@@ -1267,7 +1275,9 @@ public:
         if (isBlocked() == false) {
             (*stats.blockedCauses[MAX_CMD_REGIONS])[cause]++;
             blockedCycle = curCycle();
-            cpuSidePort.setBlocked();
+            for (auto port : cpuSidePorts) {
+                port->setBlocked();
+            }
         }
         blocked[cause] += 1;
         DPRINTF(Cache, "Blocking for cause %d, %u %u %u\n", cause, blocked[0], blocked[1], blocked[2]);
@@ -1285,7 +1295,9 @@ public:
         DPRINTF(Cache, "Unblocking for cause %d, %u %u %u\n", cause, blocked[0], blocked[1], blocked[2]);
         if (isBlocked() == false) {
             (*stats.blockedCycles[MAX_CMD_REGIONS])[cause] += curCycle() - blockedCycle;
-            cpuSidePort.clearBlocked();
+            for (auto port : cpuSidePorts) {
+                port->clearBlocked();
+            }
         }
     }
 

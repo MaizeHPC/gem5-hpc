@@ -153,8 +153,8 @@ def config_3L_cache(options, system):
             system.l3.write_buffers = system.l3.write_buffers * options.cpu_buffer_enlarge_factor
 
         system.tol3bus = L3XBar(clk_domain=system.cpu_clk_domain)
-        system.l3.cpu_side = system.tol3bus.mem_side_ports
         for _ in range(options.num_cpus):
+            system.l3.cpu_sides = system.tol3bus.mem_side_ports
             system.membus.cpu_side_ports = system.l3.mem_sides
 
     for i in range(options.num_cpus):
@@ -326,7 +326,7 @@ def config_cache(options, system):
         )
 
         system.tol2bus = L2XBar(clk_domain=system.cpu_clk_domain)
-        l2cache.cpu_side = system.tol2bus.mem_side_ports
+        l2cache.cpu_sides = system.tol2bus.mem_side_ports
         system.membus.cpu_side_ports = l2cache.mem_sides
 
     if options.memchecker:
@@ -358,7 +358,7 @@ def config_cache(options, system):
                 dcache_mon.memchecker = system.memchecker
 
                 # Connect monitor
-                dcache_mon.mem_side = dcache.cpu_side
+                dcache_mon.mem_side = dcache.cpu_sides
 
                 # Let CPU connect to monitors
                 dcache = dcache_mon

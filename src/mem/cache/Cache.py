@@ -136,7 +136,7 @@ class BaseCache(ClockedObject):
         False, "Whether to access tags and data sequentially"
     )
 
-    cpu_side = ResponsePort("Upstream port closer to the CPU and/or device")
+    cpu_sides = VectorResponsePort("Upstream ports closer to the CPU and/or device")
     mem_sides = VectorRequestPort("Downstream ports closer to memory")
 
     addr_ranges = VectorParam.AddrRange(

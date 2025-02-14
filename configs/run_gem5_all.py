@@ -2,17 +2,17 @@ import argparse
 import os
 from threading import Thread, Lock
 
-parallelism = 64
+parallelism = 16
 GEM5_DIR = "/home/arkhadem/gem5-hpc"
 DATA_DIR = "/data4/arkhadem/gem5-hpc"
-CPT_DIR = f"{DATA_DIR}/checkpoints"
-RSLT_DIR = f"{DATA_DIR}/results"
-RC_CPT_DIR = f"{DATA_DIR}/checkpoints_RC"
-RC_RSLT_DIR = f"{DATA_DIR}/results_RC"
-TS_CPT_DIR = f"{DATA_DIR}/checkpoints_TS"
-TS_RSLT_DIR = f"{DATA_DIR}/results_TS"
-SC_CPT_DIR = f"{DATA_DIR}/checkpoints_SC"
-SC_RSLT_DIR = f"{DATA_DIR}/results_SC"
+CPT_DIR = f"{DATA_DIR}/checkpoints_new"
+RSLT_DIR = f"{DATA_DIR}/results_new"
+RC_CPT_DIR = f"{DATA_DIR}/checkpoints_RC_new"
+RC_RSLT_DIR = f"{DATA_DIR}/results_RC_new"
+TS_CPT_DIR = f"{DATA_DIR}/checkpoints_TS_new"
+TS_RSLT_DIR = f"{DATA_DIR}/results_TS_new"
+SC_CPT_DIR = f"{DATA_DIR}/checkpoints_SC_new"
+SC_RSLT_DIR = f"{DATA_DIR}/results_SC_new"
 LOG_DIR = f"{DATA_DIR}/logs"
 
 all_MAA_configs = [{"do_reorder": True, "force_cache": False},
@@ -28,10 +28,17 @@ all_tile_sizes_str = ["1K", "2K", "4K", "8K", "16K", "32K"]
 all_scaling_cores = [4, 8, 16]
 all_scaling_maas = [1, 2, 4]
 
-DO_GENERAL_EXP = True
-DO_REORDER_FORCE_CACHE_EXP = True
-DO_TILE_SIZE_EXP = True
+DO_GENERAL_EXP = False
+DO_REORDER_FORCE_CACHE_EXP = False
+DO_TILE_SIZE_EXP = False
 DO_SCALING_EXP = True
+
+RUN_MICRO = True
+RUN_NAS = True
+RUN_GAPB = True
+RUN_SPATTER = True
+RUN_HASHJOIN = True
+RUN_UME = True
 
 all_MICRO_kernels =   ["gather",
                         "scatter",
@@ -50,13 +57,6 @@ all_GAPB_kernels = ["bfs", "pr", "bc", "sssp"]
 all_SPATTER_kernels = ["xrage", "flag"]
 all_HASHJOIN_kernels = ["PRH", "PRO"]
 all_UME_kernels = ["gradzatp", "gradzatz", "gradzatz_invert", "gradzatp_invert"]
-
-RUN_MICRO = False
-RUN_NAS = True
-RUN_GAPB = True
-RUN_SPATTER = True
-RUN_HASHJOIN = True
-RUN_UME = True
 
 os.system("mkdir -p " + LOG_DIR)
 
@@ -185,6 +185,8 @@ def add_command_run_MAA(directory,
     else:
         raise ValueError("Unknown mode")
     mem_channels = int(mem_channels_per_core * float(num_cores))
+    ncbus_width = 32 if mem_channels == 2 else 64 if mem_channels == 4 else 128 if mem_channels == 8 else -1
+    assert ncbus_width != -1
 
     COMMAND = f"OMP_PROC_BIND=false OMP_NUM_THREADS={num_cores} {GEM5_DIR}/build/X86/gem5.opt "
     # if debug_type != None: # and mode == "MAA":
@@ -227,6 +229,7 @@ def add_command_run_MAA(directory,
     COMMAND += f"--mem-type {mem_type} "
     COMMAND += f"--ramulator-config {ramulator_config} "
     COMMAND += f"--mem-channels {mem_channels} "
+    COMMAND += f"--maa_ncbus_width {ncbus_width} "
     if have_maa or maa_warmer:
         COMMAND += "--maa "
         COMMAND += f"--maa_num_maas {num_maas} "
@@ -264,6 +267,16 @@ def add_command_run_MAA(directory,
     tasks.append(task)
 
 
+# add_command_run_MAA(directory=f"{SC_RSLT_DIR}/is/MAA/b/8",
+#                 checkpoint=f"{SC_CPT_DIR}/is/MAA/b/8",
+#                 checkpoint_id = None,
+#                 command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/NAS/is/is_maa_8C",
+#                 options="MAA",
+#                 mode="MAA",
+#                 num_cores=8,
+#                 num_maas=2)
+
+
 # checkpoint_id = None
 # checkpoint_id = add_command_checkpoint(directory=f"{RC_CPT_DIR}/bfs/MAA/22/debug",
 #                                         command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/bfs_maa",
@@ -284,48 +297,6 @@ def add_command_run_MAA(directory,
 # all_distances_str = ["256", "1K", "4K", "16K", "64K", "256K", "1M", "4M"]
 # all_sizes = [2000000]
 # all_sizes_str = ["2M"]
-
-if RUN_MICRO:
-    all_dtypes = ["f32", "f64"]
-
-    # Reordering and force cache experiments
-    if DO_REORDER_FORCE_CACHE_EXP:
-        for kernel in all_MICRO_kernels:
-            for dtype in all_dtypes:
-                checkpoint_id = None
-                checkpoint_id = add_command_checkpoint(directory=f"{RC_CPT_DIR}/tests/{kernel}/{dtype}/MAA",
-                                                        command=f"{GEM5_DIR}/tests/test-progs/MAA/CISC/test_double_T16K.o",
-                                                        options=f"2000000 CMP {dtype} {kernel}")
-                for MAA_config in all_MAA_configs:
-                    reordering = "REORDER" if MAA_config['do_reorder'] else "NOREORDER"
-                    force_cache = "FCACHE" if MAA_config['force_cache'] else "NOFCACHE"
-                    add_command_run_MAA(directory=f"{RC_RSLT_DIR}/tests/{kernel}/{dtype}/MAA/{reordering}/{force_cache}",
-                                        checkpoint=f"{RC_CPT_DIR}/tests/{kernel}/{dtype}/MAA",
-                                        checkpoint_id = checkpoint_id,
-                                        command=f"{GEM5_DIR}/tests/test-progs/MAA/CISC/test_double_T16K.o",
-                                        options=f"2000000 CMP {dtype} {kernel}",
-                                        mode="MAA",
-                                        do_reorder=MAA_config['do_reorder'],
-                                        force_cache=MAA_config['force_cache'])
-    if DO_SCALING_EXP:
-        for kernel in all_MICRO_kernels:
-            for dtype in all_dtypes:
-                for mode in all_scaling_modes:
-                    for num_cores, num_maas in zip(all_scaling_cores, all_scaling_maas):
-                        options = f"{2000000*num_maas} {mode} {dtype} {kernel}"
-                        checkpoint_id = None
-                        checkpoint_id = add_command_checkpoint(directory=f"{SC_CPT_DIR}/tests/{kernel}/{dtype}/{mode}/{num_cores}",
-                                                                command=f"{GEM5_DIR}/tests/test-progs/MAA/CISC/test_double_{num_cores}C.o",
-                                                                options=options,
-                                                                num_cores=num_cores)
-                        add_command_run_MAA(directory=f"{SC_RSLT_DIR}/tests/{kernel}/{dtype}/{mode}/{num_cores}",
-                                            checkpoint=f"{SC_CPT_DIR}/tests/{kernel}/{dtype}/{mode}/{num_cores}",
-                                            checkpoint_id = checkpoint_id,
-                                            command=f"{GEM5_DIR}/tests/test-progs/MAA/CISC/test_double_{num_cores}C.o",
-                                            options=options,
-                                            mode=mode,
-                                            num_cores=num_cores,
-                                            num_maas=num_maas)
                     
 
 # add_command_run_MAA(directory=f"{RSLT_DIR}/rmw/allmiss/BAH0/RBH100/CBH0/BGH0/64K_MAA_port",
@@ -865,6 +836,49 @@ if RUN_UME:
                                         mode=mode,
                                         num_cores=num_cores,
                                         num_maas=num_maas)
+
+########################################## MICRO ##########################################
+
+if RUN_MICRO:
+    all_dtypes = ["f32", "f64"]
+    # Reordering and force cache experiments
+    if DO_REORDER_FORCE_CACHE_EXP:
+        for kernel in all_MICRO_kernels:
+            for dtype in all_dtypes:
+                checkpoint_id = None
+                checkpoint_id = add_command_checkpoint(directory=f"{RC_CPT_DIR}/tests/{kernel}/{dtype}/MAA",
+                                                        command=f"{GEM5_DIR}/tests/test-progs/MAA/CISC/test_double_T16K.o",
+                                                        options=f"2000000 CMP {dtype} {kernel}")
+                for MAA_config in all_MAA_configs:
+                    reordering = "REORDER" if MAA_config['do_reorder'] else "NOREORDER"
+                    force_cache = "FCACHE" if MAA_config['force_cache'] else "NOFCACHE"
+                    add_command_run_MAA(directory=f"{RC_RSLT_DIR}/tests/{kernel}/{dtype}/MAA/{reordering}/{force_cache}",
+                                        checkpoint=f"{RC_CPT_DIR}/tests/{kernel}/{dtype}/MAA",
+                                        checkpoint_id = checkpoint_id,
+                                        command=f"{GEM5_DIR}/tests/test-progs/MAA/CISC/test_double_T16K.o",
+                                        options=f"2000000 CMP {dtype} {kernel}",
+                                        mode="MAA",
+                                        do_reorder=MAA_config['do_reorder'],
+                                        force_cache=MAA_config['force_cache'])
+    if DO_SCALING_EXP:
+        for kernel in all_MICRO_kernels:
+            for dtype in all_dtypes:
+                for mode in all_scaling_modes:
+                    for num_cores, num_maas in zip(all_scaling_cores, all_scaling_maas):
+                        options = f"{2000000*num_maas} {mode} {dtype} {kernel}"
+                        checkpoint_id = None
+                        checkpoint_id = add_command_checkpoint(directory=f"{SC_CPT_DIR}/tests/{kernel}/{dtype}/{mode}/{num_cores}",
+                                                                command=f"{GEM5_DIR}/tests/test-progs/MAA/CISC/test_double_{num_cores}C.o",
+                                                                options=options,
+                                                                num_cores=num_cores)
+                        add_command_run_MAA(directory=f"{SC_RSLT_DIR}/tests/{kernel}/{dtype}/{mode}/{num_cores}",
+                                            checkpoint=f"{SC_CPT_DIR}/tests/{kernel}/{dtype}/{mode}/{num_cores}",
+                                            checkpoint_id = checkpoint_id,
+                                            command=f"{GEM5_DIR}/tests/test-progs/MAA/CISC/test_double_{num_cores}C.o",
+                                            options=options,
+                                            mode=mode,
+                                            num_cores=num_cores,
+                                            num_maas=num_maas)
 
 ########################################## RUN SELECTED EXPERIMENTS ##########################################
 if parallelism != 0:
