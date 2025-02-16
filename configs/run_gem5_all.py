@@ -2,7 +2,7 @@ import argparse
 import os
 from threading import Thread, Lock
 
-parallelism = 16
+parallelism = 32
 GEM5_DIR = "/home/arkhadem/gem5-hpc"
 DATA_DIR = "/data4/arkhadem/gem5-hpc"
 CPT_DIR = f"{DATA_DIR}/checkpoints_new"
@@ -23,17 +23,23 @@ all_MAA_configs = [{"do_reorder": True, "force_cache": False},
 all_modes = ["BASE", "MAA", "DMP"]
 all_scaling_modes = ["BASE", "MAA"]
 
-all_tile_sizes = [1024, 2048, 4096, 8192, 16384, 32768]
-all_tile_sizes_str = ["1K", "2K", "4K", "8K", "16K", "32K"]
-all_scaling_cores = [4, 8, 16]
-all_scaling_maas = [1, 2, 4]
+# all_tile_sizes = [1024, 2048, 4096, 8192, 16384, 32768]
+# all_tile_sizes_str = ["1K", "2K", "4K", "8K", "16K", "32K"]
+all_tile_sizes = [1024, 2048, 4096, 8192, 32768]
+all_tile_sizes_str = ["1K", "2K", "4K", "8K", "32K"]
+# all_scaling_cores = [4, 8, 16]
+# all_scaling_maas = [1, 2, 4]
+# all_scaling_cores = [4, 8]
+# all_scaling_maas = [1, 2]
+all_scaling_cores = [8]
+all_scaling_maas = [2]
 
-DO_GENERAL_EXP = False
-DO_REORDER_FORCE_CACHE_EXP = False
-DO_TILE_SIZE_EXP = False
-DO_SCALING_EXP = True
+DO_GENERAL_EXP = True
+DO_REORDER_FORCE_CACHE_EXP = True
+DO_TILE_SIZE_EXP = True
+DO_SCALING_EXP = False
 
-RUN_MICRO = True
+RUN_MICRO = False
 RUN_NAS = True
 RUN_GAPB = True
 RUN_SPATTER = True
@@ -139,6 +145,12 @@ debug_type = "MAATrace" # "MAAAll,XBar,Cache,CacheVerbose,Exec,-ExecSymbol" #Sys
     # debug_type = "MAACachePort,MAAIndirect,MAAStream,Cache"
 
 def add_command_checkpoint(directory, command, options, num_cores = 4):
+    if os.path.isdir(directory):
+        contents = os.listdir(directory)
+        for content in contents:
+            if "cpt." in content:
+                print(f"Checkpoint {directory} already exists!")
+                return None
     COMMAND = f"rm -r {directory} 2>&1 > /dev/null; sleep 1; mkdir -p {directory}; sleep 2; "
     COMMAND += f"OMP_PROC_BIND=false OMP_NUM_THREADS={num_cores} build/X86/gem5.fast "
     COMMAND += f"--outdir={directory} "
@@ -169,6 +181,8 @@ def add_command_run_MAA(directory,
                         do_prefetch = True,
                         do_reorder = True,
                         force_cache = False):
+
+        
     have_maa = False
     l2_hwp_type = "StridePrefetcher"
     if mode == "DMP":
@@ -496,91 +510,6 @@ if RUN_NAS:
                                         mode=mode,
                                         num_cores=num_cores,
                                         num_maas=num_maas)
-        
-########################################## GAPB ##########################################
-
-if RUN_GAPB:
-    # General experiments
-    if DO_GENERAL_EXP:
-        for kernel in all_GAPB_kernels:
-            for mode in all_modes:
-                size = 20 if kernel == "bc" else 22
-                file_name = f"{kernel}_maa" if mode == "MAA" else kernel
-                graph_ext = "wsg" if kernel == "sssp" else "sg"
-                checkpoint_id = None
-                checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/{kernel}/{mode}/{size}",
-                                                        command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
-                                                        options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1")
-                add_command_run_MAA(directory=f"{RSLT_DIR}/{kernel}/{mode}/{size}",
-                                    checkpoint=f"{CPT_DIR}/{kernel}/{mode}/{size}",
-                                    checkpoint_id = checkpoint_id,
-                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
-                                    options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
-                                    mode=mode)
-            
-    # Reordering and force cache experiments
-    if DO_REORDER_FORCE_CACHE_EXP:
-        for kernel in all_GAPB_kernels:
-            size = 20 if kernel == "bc" else 22
-            file_name = f"{kernel}_maa"
-            graph_ext = "wsg" if kernel == "sssp" else "sg"
-            checkpoint_id = None
-            checkpoint_id = add_command_checkpoint(directory=f"{RC_CPT_DIR}/{kernel}/MAA/{size}",
-                                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
-                                                    options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1")
-            for MAA_config in all_MAA_configs:
-                reordering = "REORDER" if MAA_config['do_reorder'] else "NOREORDER"
-                force_cache = "FCACHE" if MAA_config['force_cache'] else "NOFCACHE"
-                add_command_run_MAA(directory=f"{RC_RSLT_DIR}/{kernel}/MAA/{size}/{reordering}/{force_cache}",
-                                    checkpoint=f"{RC_CPT_DIR}/{kernel}/MAA/{size}",
-                                    checkpoint_id = checkpoint_id,
-                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
-                                    options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
-                                    mode="MAA",
-                                    do_reorder=MAA_config['do_reorder'],
-                                    force_cache=MAA_config['force_cache'])
-
-    # Tile size experiments
-    if DO_TILE_SIZE_EXP:
-        for kernel in all_GAPB_kernels:
-            for tile_size, tile_size_str in zip(all_tile_sizes, all_tile_sizes_str):
-                size = 20 if kernel == "bc" else 22
-                file_name = f"{kernel}_maa_{tile_size_str}"
-                graph_ext = "wsg" if kernel == "sssp" else "sg"
-                checkpoint_id = None
-                checkpoint_id = add_command_checkpoint(directory=f"{TS_CPT_DIR}/{kernel}/MAA/{size}/{tile_size_str}",
-                                                        command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
-                                                        options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1")
-                add_command_run_MAA(directory=f"{TS_RSLT_DIR}/{kernel}/MAA/{size}/{tile_size_str}",
-                                    checkpoint=f"{TS_CPT_DIR}/{kernel}/MAA/{size}/{tile_size_str}",
-                                    checkpoint_id = checkpoint_id,
-                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
-                                    options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
-                                    mode="MAA",
-                                    tile_size=tile_size)
-    
-    # Scaling experiments
-    if DO_SCALING_EXP:
-        for kernel in all_GAPB_kernels:
-            for mode in all_scaling_modes:
-                for num_cores, num_maas in zip(all_scaling_cores, all_scaling_maas):
-                    lsize = 0 if num_maas == 1 else 1 if num_maas == 2 else 2
-                    size = (20+lsize) if kernel == "bc" else (21+lsize) if kernel == "sssp" else (22+lsize)
-                    file_name = f"{kernel}_maa_{num_cores}C" if mode == "MAA" else kernel
-                    graph_ext = "wsg" if kernel == "sssp" else "sg"
-                    checkpoint_id = None
-                    checkpoint_id = add_command_checkpoint(directory=f"{SC_CPT_DIR}/{kernel}/{mode}/{size}/{num_cores}",
-                                                            command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
-                                                            options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
-                                                            num_cores=num_cores)
-                    add_command_run_MAA(directory=f"{SC_RSLT_DIR}/{kernel}/{mode}/{size}/{num_cores}",
-                                        checkpoint=f"{SC_CPT_DIR}/{kernel}/{mode}/{size}/{num_cores}",
-                                        checkpoint_id = checkpoint_id,
-                                        command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
-                                        options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
-                                        mode=mode,
-                                        num_cores=num_cores,
-                                        num_maas=num_maas)
 
 # ########################################## SPATTER ##########################################
 
@@ -837,6 +766,91 @@ if RUN_UME:
                                         num_cores=num_cores,
                                         num_maas=num_maas)
 
+########################################## GAPB ##########################################
+
+if RUN_GAPB:
+    # General experiments
+    if DO_GENERAL_EXP:
+        for kernel in all_GAPB_kernels:
+            for mode in all_modes:
+                size = 20 if kernel == "bc" else 22
+                file_name = f"{kernel}_maa" if mode == "MAA" else kernel
+                graph_ext = "wsg" if kernel == "sssp" else "sg"
+                checkpoint_id = None
+                checkpoint_id = add_command_checkpoint(directory=f"{CPT_DIR}/{kernel}/{mode}/{size}",
+                                                        command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
+                                                        options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1")
+                add_command_run_MAA(directory=f"{RSLT_DIR}/{kernel}/{mode}/{size}",
+                                    checkpoint=f"{CPT_DIR}/{kernel}/{mode}/{size}",
+                                    checkpoint_id = checkpoint_id,
+                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
+                                    options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
+                                    mode=mode)
+            
+    # Reordering and force cache experiments
+    if DO_REORDER_FORCE_CACHE_EXP:
+        for kernel in all_GAPB_kernels:
+            size = 20 if kernel == "bc" else 22
+            file_name = f"{kernel}_maa"
+            graph_ext = "wsg" if kernel == "sssp" else "sg"
+            checkpoint_id = None
+            checkpoint_id = add_command_checkpoint(directory=f"{RC_CPT_DIR}/{kernel}/MAA/{size}",
+                                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
+                                                    options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1")
+            for MAA_config in all_MAA_configs:
+                reordering = "REORDER" if MAA_config['do_reorder'] else "NOREORDER"
+                force_cache = "FCACHE" if MAA_config['force_cache'] else "NOFCACHE"
+                add_command_run_MAA(directory=f"{RC_RSLT_DIR}/{kernel}/MAA/{size}/{reordering}/{force_cache}",
+                                    checkpoint=f"{RC_CPT_DIR}/{kernel}/MAA/{size}",
+                                    checkpoint_id = checkpoint_id,
+                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
+                                    options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
+                                    mode="MAA",
+                                    do_reorder=MAA_config['do_reorder'],
+                                    force_cache=MAA_config['force_cache'])
+
+    # Tile size experiments
+    if DO_TILE_SIZE_EXP:
+        for kernel in all_GAPB_kernels:
+            for tile_size, tile_size_str in zip(all_tile_sizes, all_tile_sizes_str):
+                size = 20 if kernel == "bc" else 22
+                file_name = f"{kernel}_maa_{tile_size_str}"
+                graph_ext = "wsg" if kernel == "sssp" else "sg"
+                checkpoint_id = None
+                checkpoint_id = add_command_checkpoint(directory=f"{TS_CPT_DIR}/{kernel}/MAA/{size}/{tile_size_str}",
+                                                        command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
+                                                        options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1")
+                add_command_run_MAA(directory=f"{TS_RSLT_DIR}/{kernel}/MAA/{size}/{tile_size_str}",
+                                    checkpoint=f"{TS_CPT_DIR}/{kernel}/MAA/{size}/{tile_size_str}",
+                                    checkpoint_id = checkpoint_id,
+                                    command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
+                                    options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
+                                    mode="MAA",
+                                    tile_size=tile_size)
+    
+    # Scaling experiments
+    if DO_SCALING_EXP:
+        for kernel in all_GAPB_kernels:
+            for mode in all_scaling_modes:
+                for num_cores, num_maas in zip(all_scaling_cores, all_scaling_maas):
+                    lsize = 0 if num_maas == 1 else 1 if num_maas == 2 else 2
+                    size = (20+lsize) if kernel == "bc" else (21+lsize) if kernel == "sssp" else (22+lsize)
+                    file_name = f"{kernel}_maa_{num_cores}C" if mode == "MAA" else kernel
+                    graph_ext = "wsg" if kernel == "sssp" else "sg"
+                    checkpoint_id = None
+                    checkpoint_id = add_command_checkpoint(directory=f"{SC_CPT_DIR}/{kernel}/{mode}/{size}/{num_cores}",
+                                                            command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
+                                                            options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
+                                                            num_cores=num_cores)
+                    add_command_run_MAA(directory=f"{SC_RSLT_DIR}/{kernel}/{mode}/{size}/{num_cores}",
+                                        checkpoint=f"{SC_CPT_DIR}/{kernel}/{mode}/{size}/{num_cores}",
+                                        checkpoint_id = checkpoint_id,
+                                        command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
+                                        options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
+                                        mode=mode,
+                                        num_cores=num_cores,
+                                        num_maas=num_maas)
+
 ########################################## MICRO ##########################################
 
 if RUN_MICRO:
@@ -880,7 +894,10 @@ if RUN_MICRO:
                                             num_cores=num_cores,
                                             num_maas=num_maas)
 
-########################################## RUN SELECTED EXPERIMENTS ##########################################
+# ########################################## RUN SELECTED EXPERIMENTS ##########################################
+print (f"There exists {len(tasks)} commands to run:")
+for task_id in range(len(tasks)):
+    print (f"Task {task_id}: {tasks[task_id].command}")
 if parallelism != 0:
     threads = []
     for i in range(parallelism):

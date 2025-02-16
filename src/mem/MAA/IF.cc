@@ -226,7 +226,6 @@ bool IF::pushInstruction(Instruction _instruction) {
 bool IF::canPushRegister(Register _reg) {
     int register_id = _reg.register_id;
     int maa_id = _reg.maa_id;
-    assert(register_id >= 0 && register_id < 32);
     for (int i = 0; i < num_instructions_per_maa; i++) {
         if (valids[maa_id][i] == true) {
             if ((instructions[maa_id][i].dst1RegID == register_id) ||

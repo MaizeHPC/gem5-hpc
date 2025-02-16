@@ -322,7 +322,7 @@ void StreamAccessUnit::executeInstruction() {
         DPRINTF(MAAStream, "S[%d] %s: responding %s!\n", my_stream_id, __func__, my_instruction->print());
         DPRINTF(MAATrace, "S[%d] End [%s]\n", my_stream_id, my_instruction->print());
         panic_if(scheduleNextExecution(), "S[%d] %s: Execution is not completed!\n", my_stream_id, __func__);
-        panic_if(maa->allStreamPacketsSent() == false, "S[%d] %s: all stream packets are not sent!\n", my_stream_id, __func__);
+        panic_if(maa->allStreamPacketsSent(my_stream_id) == false, "S[%d] %s: all stream packets are not sent!\n", my_stream_id, __func__);
         panic_if(my_received_responses != my_sent_requests, "S[%d] %s: received_responses(%d) != sent_requests(%d)!\n",
                  my_stream_id, __func__, my_received_responses, my_sent_requests);
         DPRINTF(MAAStream, "S[%d] %s: state set to finish for request %s!\n", my_stream_id, __func__, my_instruction->print());
@@ -354,30 +354,29 @@ void StreamAccessUnit::createReadPacket(Addr addr, int latency) {
     real_req->setRegion(my_addr_range_id);
     PacketPtr my_pkt;
     if (my_instruction->opcode == Instruction::OpcodeType::STREAM_LD) {
-        my_pkt = new Packet(real_req, MemCmd::ReadSharedReq);
+        my_pkt = new Packet(real_req, MemCmd::ReadReq);
     } else {
         my_pkt = new Packet(real_req, MemCmd::ReadExReq);
     }
     my_pkt->allocate();
-    maa->sendPacket(FuncUnitType::STREAM, my_pkt, maa->getClockEdge(Cycles(latency)));
+    maa->sendPacket(FuncUnitType::STREAM, my_stream_id, my_pkt, maa->getClockEdge(Cycles(latency)));
     DPRINTF(MAAStream, "S[%d] %s: created %s to send in %d cycles\n", my_stream_id, __func__, my_pkt->print(), latency);
     (*maa->stats.STR_LoadsCacheAccessing[my_stream_id])++;
 }
-void StreamAccessUnit::readPacketSent(PacketPtr pkt) {
-    DPRINTF(MAAStream, "S[%d] %s: cache read packet %s sent\n", my_stream_id, __func__, pkt->print());
-    return;
+void StreamAccessUnit::readPacketSent(Addr addr) {
+    DPRINTF(MAAStream, "S[%d] %s: cache read packet 0x%lx sent!\n", my_stream_id, __func__, addr);
 }
-void StreamAccessUnit::writePacketSent(PacketPtr pkt) {
-    DPRINTF(MAAStream, "S[%d] %s: cache write packet %s sent\n", my_stream_id, __func__, pkt->print());
+void StreamAccessUnit::writePacketSent(Addr addr) {
+    DPRINTF(MAAStream, "S[%d] %s: cache write packet 0x%lx sent!\n", my_stream_id, __func__, addr);
     my_received_responses++;
-    if (maa->allStreamPacketsSent() && (my_received_responses == my_sent_requests)) {
+    if (maa->allStreamPacketsSent(my_stream_id) && (my_received_responses == my_sent_requests)) {
         DPRINTF(MAAStream, "S[%d] %s: all responses received, calling execution again in state %s!\n", my_stream_id, __func__, status_names[(int)state]);
         scheduleNextExecution(true);
     } else {
         DPRINTF(MAAStream, "S[%d] %s: expected: %d, received: %d!\n", my_stream_id, __func__, my_received_responses, my_received_responses);
     }
 }
-bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr, int core_id) {
+bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr) {
     bool was_request_table_full = request_table->is_full();
     std::vector<RequestTableEntry> entries = request_table->get_entries(addr);
     if (entries.empty()) {
@@ -422,7 +421,7 @@ bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr, int core_id) 
     if (my_instruction->opcode == Instruction::OpcodeType::STREAM_LD) {
         my_received_responses++;
         updateLatency(0, 0, entries.size(), 1);
-        if (maa->allStreamPacketsSent() && my_received_responses == my_sent_requests) {
+        if (maa->allStreamPacketsSent(my_stream_id) && my_received_responses == my_sent_requests) {
             DPRINTF(MAAStream, "S[%d] %s: all responses received, calling execution again in state %s!\n", my_stream_id, __func__, status_names[(int)state]);
             scheduleNextExecution(true);
         } else {
@@ -435,7 +434,7 @@ bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr, int core_id) 
         write_pkt->allocate();
         write_pkt->setData(new_data);
         DPRINTF(MAAStream, "S[%d] %s: created %s to send in %d cycles\n", my_stream_id, __func__, write_pkt->print(), total_latency);
-        maa->sendPacket(FuncUnitType::STREAM, write_pkt, maa->getClockEdge(total_latency));
+        maa->sendPacket(FuncUnitType::STREAM, my_stream_id, write_pkt, maa->getClockEdge(total_latency));
     }
     if (was_request_table_full) {
         scheduleNextExecution(true);

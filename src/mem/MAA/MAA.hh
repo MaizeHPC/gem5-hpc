@@ -303,16 +303,10 @@ protected:
     void recvTimingReq(PacketPtr pkt, int core_id);
 
     /**
-     * Handles a response (cache line fill/write ack) from the bus.
+     * Handles a response from the bus.
      * @param pkt The response packet
      */
-    void recvMemTimingResp(PacketPtr pkt);
-
-    /**
-     * Handles a response (cache line fill/write ack) from the bus.
-     * @param pkt The response packet
-     */
-    void recvCacheTimingResp(PacketPtr pkt, int core_id);
+    void recvTimingResp(PacketPtr pkt, bool cached);
 
     /**
      * Handle a snoop response.
@@ -405,6 +399,7 @@ public:
     unsigned int num_request_table_entries_per_address;
     unsigned int num_memory_channels;
     unsigned int num_cores;
+    unsigned int num_channels;
     unsigned int num_maas;
     unsigned int num_cores_per_maas;
     unsigned int m_core_addr_bits;
@@ -468,7 +463,6 @@ protected:
     bool *aluUnitsIdle;
     bool *rangeUnitsIdle;
     bool invalidatorIdle;
-    int lastCacheSidePortSend;
     std::unique_ptr<Packet> pendingDelete;
 
 public:
@@ -652,33 +646,57 @@ public:
     } stats;
 
 protected:
+    struct pair_hash {
+        template <class T1, class T2>
+        std::size_t operator()(const std::pair<T1, T2> &p) const {
+            return std::hash<T1>{}(p.first) ^ (std::hash<T2>{}(p.second) << 1);
+        }
+    };
     class OutstandingPacket {
     public:
         PacketPtr packet;
+        Addr paddr;
         Tick tick;
-        OutstandingPacket(PacketPtr _packet, Tick _tick)
-            : packet(_packet), tick(_tick) {}
+        MemCmd cmd;
+        bool cached;
+        bool sent;
+        std::vector<uint8_t> maaIDs;
+        std::vector<FuncUnitType> funcUnits;
+        OutstandingPacket(PacketPtr _packet, Addr _paddr, Tick _tick, MemCmd _cmd)
+            : packet(_packet), paddr(_paddr), tick(_tick), cmd(_cmd), cached(false), sent(false) {}
+        OutstandingPacket() {}
         OutstandingPacket(const OutstandingPacket &other) {
             packet = other.packet;
+            paddr = other.paddr;
             tick = other.tick;
+            cmd = other.cmd;
+            funcUnits = other.funcUnits;
+            maaIDs = other.maaIDs;
+            sent = other.sent;
+            cached = other.cached;
         }
         bool operator<(const OutstandingPacket &rhs) const {
             return tick < rhs.tick;
         }
+        OutstandingPacket &operator=(const OutstandingPacket &other) = default;
     };
     struct CompareByTick {
         bool operator()(const OutstandingPacket &lhs, const OutstandingPacket &rhs) const {
             return lhs.tick < rhs.tick;
         }
     };
-    std::multiset<OutstandingPacket, CompareByTick> my_outstanding_indirect_cache_read_pkts;
-    std::multiset<OutstandingPacket, CompareByTick> my_outstanding_indirect_cache_write_pkts;
-    std::multiset<OutstandingPacket, CompareByTick> my_outstanding_indirect_mem_write_pkts;
-    std::multiset<OutstandingPacket, CompareByTick> my_outstanding_indirect_mem_read_pkts;
-    std::multiset<OutstandingPacket, CompareByTick> my_outstanding_stream_cache_read_pkts;
-    std::multiset<OutstandingPacket, CompareByTick> my_outstanding_stream_cache_write_pkts;
-    std::multiset<OutstandingPacket, CompareByTick> my_outstanding_stream_mem_write_pkts;
-    std::multiset<OutstandingPacket, CompareByTick> my_outstanding_stream_mem_read_pkts;
+    std::multiset<OutstandingPacket, CompareByTick> *my_outstanding_indirect_cache_read_pkts;
+    std::multiset<OutstandingPacket, CompareByTick> *my_outstanding_indirect_cache_write_pkts;
+    std::multiset<OutstandingPacket, CompareByTick> *my_outstanding_indirect_mem_write_pkts;
+    std::multiset<OutstandingPacket, CompareByTick> *my_outstanding_indirect_mem_read_pkts;
+    std::multiset<OutstandingPacket, CompareByTick> *my_outstanding_stream_cache_read_pkts;
+    std::multiset<OutstandingPacket, CompareByTick> *my_outstanding_stream_cache_write_pkts;
+    std::multiset<OutstandingPacket, CompareByTick> *my_outstanding_stream_mem_write_pkts;
+    std::multiset<OutstandingPacket, CompareByTick> *my_outstanding_stream_mem_read_pkts;
+    std::unordered_map<Addr, OutstandingPacket> my_outstanding_pkt_map;
+    uint32_t *my_num_outstanding_indirect_pkts;
+    uint32_t *my_num_outstanding_stream_pkts;
+    bool allIndirectEmpty();
     bool scheduleNextSendCache();
     bool scheduleNextSendMem();
     void scheduleSendCacheEvent(int latency = 0);
@@ -688,14 +706,14 @@ protected:
     EventFunctionWrapper sendCacheEvent;
     EventFunctionWrapper sendMemEvent;
     bool *mem_channels_blocked;
-    bool cache_blocked;
+    bool *cache_bus_blocked;
     void unblockMemChannel(int channel_id);
-    void unblockCache();
+    void unblockCache(int core_id);
 
 public:
-    void sendPacket(FuncUnitType funcUnit, PacketPtr pkt, Tick tick, bool force_cache = false);
-    bool allIndirectPacketsSent();
-    bool allStreamPacketsSent();
+    void sendPacket(FuncUnitType funcUnit, uint8_t maaID, PacketPtr pkt, Tick tick, bool force_cache = false);
+    bool allIndirectPacketsSent(uint8_t maaID);
+    bool allStreamPacketsSent(uint8_t maaID);
 };
 /**
  * Returns the address of the closest aligned fixed-size block to the given

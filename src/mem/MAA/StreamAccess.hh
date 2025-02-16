@@ -93,9 +93,9 @@ public:
                          int num_requesttable_accesses);
     bool scheduleNextExecution(bool force = false);
     void scheduleExecuteInstructionEvent(int latency = 0);
-    bool recvData(const Addr addr, uint8_t *dataptr, int core_id = -1);
-    void writePacketSent(PacketPtr pkt);
-    void readPacketSent(PacketPtr pkt);
+    bool recvData(const Addr addr, uint8_t *dataptr);
+    void writePacketSent(Addr addr);
+    void readPacketSent(Addr addr);
 
     /* Related to BaseMMU::Translation Inheretance */
     void markDelayed() override {}

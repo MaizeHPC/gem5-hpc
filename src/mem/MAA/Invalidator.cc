@@ -90,7 +90,9 @@ bool Invalidator::getAddrRegionPermit(Instruction *instruction) {
             return false;
         }
         case RGStatus::TransientShared: {
-            panic_if(std::find(transientInstructions.begin(), transientInstructions.end(), instruction) == transientInstructions.end(), "Instruction %s not in transientInstructions!\n", instruction->print());
+            // It's possible that we have 2 ready read instructions in a MAA instance to the same memory region.
+            // We don't need the following assertion:
+            // panic_if(std::find(transientInstructions.begin(), transientInstructions.end(), instruction) == transientInstructions.end(), "Instruction %s not in transientInstructions!\n", instruction->print());
             // Meaning that the state is not granted yet
             DPRINTF(MAAInvalidator, "Region[%d][%d] cannot be READ permitted for instruction %s because it is still in TransientShared state!\n", maa_id, region_id, instruction->print());
             return false;
@@ -103,13 +105,18 @@ bool Invalidator::getAddrRegionPermit(Instruction *instruction) {
             // Meaning that the state is granted
             return true;
         }
-        // This means that there is another instruction using the shared state at the same time, it is not allowed
-        case RGStatus::UsingShared:
-        // The following 3 mean that there are 2 ready instructions that need to access read and write at the same time, they are not allowed
+        // It's possible that we have ready SLD and ILD instructions. But we can't handle 2 simulatenous read instructions to the same memory region.
+        // This is because when one is finished, we need to change the state to UsedShared, but the other one is still in UsingShared state.
+        case RGStatus::UsingShared: {
+            DPRINTF(MAAInvalidator, "Region[%d][%d] cannot be READ permitted for instruction %s because another read is in UsingShared state!\n", maa_id, region_id, instruction->print());
+            return false;
+        }
+        // The following 3 mean that there are 2 ready instructions that need to access read and write at the same time
+        // We cannot allow it
         case RGStatus::TransientModified:
         case RGStatus::UnusedModified:
         case RGStatus::UsingModified: {
-            panic_if(true, "Instruction %s is in invalid %s state!\n", instruction->print(), rg_status_names[(uint8_t)(rg_status[maa_id][region_id])]);
+            DPRINTF(MAAInvalidator, "Region[%d][%d] cannot be READ permitted for instruction %s because Region[%d][%d] is requested by another WRITE in %s state!\n", maa_id, region_id, instruction->print(), maa_id, region_id, rg_status_names[(uint8_t)(rg_status[maa_id][region_id])]);
             return false;
         }
         case RGStatus::UsedModified: {
@@ -157,17 +164,22 @@ bool Invalidator::getAddrRegionPermit(Instruction *instruction) {
             // Meaning that the state is not granted yet
             return false;
         }
-        // This means that there is another instruction using the shared state at the same time, it is not allowed
-        case RGStatus::UsingModified:
-        // The following 3 mean that there are 2 ready instructions that need to access read and write at the same time, they are not allowed
+        // There could be 2 ready RMW instructions in a MAA instance to the same memory region, we cannot allow it.
+        case RGStatus::UsingModified: {
+            DPRINTF(MAAInvalidator, "Region[%d][%d] cannot be WRITE permitted for instruction %s because it is in UsingModified state for another WRITE instruction!\n", maa_id, region_id, instruction->print());
+            return false;
+        }
+        // The following 3 mean that there are 2 ready instructions that need to access read and write at the same time, like SLD and IST.
         case RGStatus::TransientShared:
         case RGStatus::UnusedShared:
         case RGStatus::UsingShared: {
-            panic_if(true, "Instruction %s is in invalid %s state!\n", instruction->print(), rg_status_names[(uint8_t)(rg_status[maa_id][region_id])]);
+            DPRINTF(MAAInvalidator, "Region[%d][%d] cannot be WRITE permitted for instruction %s because Region[%d][%d] is requested by another READ in %s state!\n", maa_id, region_id, instruction->print(), maa_id, region_id, rg_status_names[(uint8_t)(rg_status[maa_id][region_id])]);
             return false;
         }
         case RGStatus::TransientModified: {
-            panic_if(std::find(transientInstructions.begin(), transientInstructions.end(), instruction) == transientInstructions.end(), "Instruction %s not in transientInstructions!\n", instruction->print());
+            // It's possible that we have 2 ready RMW instructions in a MAA instance to the same memory region, like two stores.
+            // We don't need the following assertion:
+            // panic_if(std::find(transientInstructions.begin(), transientInstructions.end(), instruction) == transientInstructions.end(), "Instruction %s not in transientInstructions!\n", instruction->print());
             DPRINTF(MAAInvalidator, "Region[%d][%d] cannot be WRITE permitted for instruction %s because it is still in TransientModified state!\n", maa_id, region_id, instruction->print());
             // Meaning that the state is not granted yet
             return false;
@@ -236,9 +248,14 @@ void Invalidator::transientInstruction() {
 }
 void Invalidator::finishInstruction(Instruction *instruction) {
     if (instruction->accessType == Instruction::AccessType::READ) {
-        panic_if(rg_status[instruction->maa_id][instruction->addrRangeID] != RGStatus::UsingShared, "Instruction %s is not in UsingShared state: %s!\n", instruction->print(), rg_status_names[(uint8_t)(rg_status[instruction->maa_id][instruction->addrRangeID])]);
-        rg_status[instruction->maa_id][instruction->addrRangeID] = RGStatus::UsedShared;
-        DPRINTF(MAAInvalidator, "Region[%d][%d] changed to UsedShared because of finishing READ for instruction %s!\n", instruction->maa_id, instruction->addrRangeID, instruction->print());
+        panic_if(rg_status[instruction->maa_id][instruction->addrRangeID] != RGStatus::UsingShared && rg_status[instruction->maa_id][instruction->addrRangeID] != RGStatus::UsingModified, "Instruction %s is not in UsingShared or UsingModified state: %s!\n", instruction->print(), rg_status_names[(uint8_t)(rg_status[instruction->maa_id][instruction->addrRangeID])]);
+        if (rg_status[instruction->maa_id][instruction->addrRangeID] == RGStatus::UsingShared) {
+            rg_status[instruction->maa_id][instruction->addrRangeID] = RGStatus::UsedShared;
+            DPRINTF(MAAInvalidator, "Region[%d][%d] changed to UsedShared because of finishing READ for instruction %s!\n", instruction->maa_id, instruction->addrRangeID, instruction->print());
+        } else if (rg_status[instruction->maa_id][instruction->addrRangeID] == RGStatus::UsingModified) {
+            rg_status[instruction->maa_id][instruction->addrRangeID] = RGStatus::UsedModified;
+            DPRINTF(MAAInvalidator, "Region[%d][%d] changed to UsedModified because of finishing READ for instruction %s!\n", instruction->maa_id, instruction->addrRangeID, instruction->print());
+        }
     } else if (instruction->accessType == Instruction::AccessType::WRITE) {
         panic_if(rg_status[instruction->maa_id][instruction->addrRangeID] != RGStatus::UsingModified, "Instruction %s is not in UsingModified state: %s!\n", instruction->print(), rg_status_names[(uint8_t)(rg_status[instruction->maa_id][instruction->addrRangeID])]);
         rg_status[instruction->maa_id][instruction->addrRangeID] = RGStatus::UsedModified;

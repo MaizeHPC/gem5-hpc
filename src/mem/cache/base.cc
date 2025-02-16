@@ -2444,15 +2444,15 @@ void BaseCache::CacheStats::regStats() {
 
         // printf("Registering blockedCycles\n");
         (*blockedCycles[idx]).init(NUM_BLOCKED_CAUSES).flags(total | nozero | nonan);
-        (*blockedCycles[idx]).subname(Blocked_NoMSHRs, "no_mshrs").subname(Blocked_NoTargets, "no_targets");
+        (*blockedCycles[idx]).subname(Blocked_NoMSHRs, "no_mshrs").subname(Blocked_NoWBBuffers, "no_wb").subname(Blocked_NoTargets, "no_targets");
 
         // printf("Registering blockedCauses\n");
         (*blockedCauses[idx]).init(NUM_BLOCKED_CAUSES).flags(total | nozero | nonan);
-        (*blockedCauses[idx]).subname(Blocked_NoMSHRs, "no_mshrs").subname(Blocked_NoTargets, "no_targets");
+        (*blockedCauses[idx]).subname(Blocked_NoMSHRs, "no_mshrs").subname(Blocked_NoWBBuffers, "no_wb").subname(Blocked_NoTargets, "no_targets");
 
         // printf("Registering avgBlocked\n");
         (*avgBlocked[idx]).flags(total | nozero | nonan);
-        (*avgBlocked[idx]).subname(Blocked_NoMSHRs, "no_mshrs").subname(Blocked_NoTargets, "no_targets");
+        (*avgBlocked[idx]).subname(Blocked_NoMSHRs, "no_mshrs").subname(Blocked_NoWBBuffers, "no_wb").subname(Blocked_NoTargets, "no_targets");
         (*avgBlocked[idx]) = (*blockedCycles[idx]) / (*blockedCauses[idx]);
 
         // printf("Registering writebacks\n");

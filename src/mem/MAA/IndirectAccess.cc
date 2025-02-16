@@ -334,7 +334,7 @@ void IndirectAccessUnit::check_reset() {
         }
     }
     offset_table->check_reset();
-    panic_if(maa->allIndirectPacketsSent() == false, "All indirect packets are not sent!\n");
+    panic_if(maa->allIndirectPacketsSent(my_indirect_id) == false, "All indirect packets are not sent!\n");
     panic_if(my_decode_start_tick != 0, "Decode start tick is not 0: %lu!\n", my_decode_start_tick);
     panic_if(my_fill_start_tick != 0, "Fill start tick is not 0: %lu!\n", my_fill_start_tick);
     panic_if(my_build_start_tick != 0, "Build start tick is not 0: %lu!\n", my_build_start_tick);
@@ -739,7 +739,7 @@ void IndirectAccessUnit::executeInstruction() {
                 my_fill_start_tick = 0;
             }
         }
-        if (maa->allIndirectPacketsSent() && my_received_responses == my_expected_responses) {
+        if (maa->allIndirectPacketsSent(my_indirect_id) && my_received_responses == my_expected_responses) {
             if (scheduleNextExecution()) {
                 DPRINTF(MAAIndirect, "I[%d] %s: requesting is still not ready, returning!\n", my_indirect_id, __func__);
                 break;
@@ -768,7 +768,7 @@ void IndirectAccessUnit::executeInstruction() {
         DPRINTF(MAAIndirect, "I[%d] %s: responding %s!\n", my_indirect_id, __func__, my_instruction->print());
         DPRINTF(MAATrace, "I[%d] End [%s]\n", my_indirect_id, my_instruction->print());
         panic_if(scheduleNextExecution(), "I[%d] %s: Execution is not completed!\n", my_indirect_id, __func__);
-        panic_if(maa->allIndirectPacketsSent() == false, "All indirect packets are not sent!\n");
+        panic_if(maa->allIndirectPacketsSent(my_indirect_id) == false, "All indirect packets are not sent!\n");
         panic_if(my_cond_tile_ready == false, "I[%d] %s: cond tile[%d] is not ready!\n", my_indirect_id, __func__, my_cond_tile);
         panic_if(my_idx_tile_ready == false, "I[%d] %s: idx tile[%d] is not ready!\n", my_indirect_id, __func__, my_idx_tile);
         panic_if(my_src_tile_ready == false, "I[%d] %s: src tile[%d] is not ready!\n", my_indirect_id, __func__, my_src_tile);
@@ -826,47 +826,46 @@ void IndirectAccessUnit::createReadPacket(Addr addr, int latency) {
     real_req->setRegion(my_addr_range_id);
     PacketPtr read_pkt;
     if (my_instruction->opcode == Instruction::OpcodeType::INDIR_LD) {
-        read_pkt = new Packet(real_req, MemCmd::ReadReq); // MemCmd::ReadSharedReq);
+        read_pkt = new Packet(real_req, MemCmd::ReadReq);
     } else {
         read_pkt = new Packet(real_req, MemCmd::ReadExReq);
     }
     read_pkt->headerDelay = read_pkt->payloadDelay = 0;
     read_pkt->allocate();
-    maa->sendPacket(FuncUnitType::INDIRECT, read_pkt, maa->getClockEdge(Cycles(latency)), my_force_cache);
+    maa->sendPacket(FuncUnitType::INDIRECT, my_indirect_id, read_pkt, maa->getClockEdge(Cycles(latency)), my_force_cache);
     DPRINTF(MAAIndirect, "I[%d] %s: created %s for mem\n", my_indirect_id, __func__, read_pkt->print());
 }
-void IndirectAccessUnit::memReadPacketSent(PacketPtr pkt) {
-    DPRINTF(MAAIndirect, "I[%d] %s: mem read packet %s sent\n", my_indirect_id, __func__, pkt->print());
-    panic_if(pkt->needsResponse() == false, "I[%d] %s: packet %s does not need response!\n", my_indirect_id, __func__, pkt->print());
+void IndirectAccessUnit::memReadPacketSent(Addr addr) {
+    DPRINTF(MAAIndirect, "I[%d] %s: mem read packet 0x%lx sent\n", my_indirect_id, __func__, addr);
     (*maa->stats.IND_LoadsMemAccessing[my_indirect_id])++;
-    LoadsMemAccessingTimeHistory[pkt->getAddr()] = curTick();
+    LoadsMemAccessingTimeHistory[addr] = curTick();
 }
-void IndirectAccessUnit::memWritePacketSent(PacketPtr pkt) {
-    DPRINTF(MAAIndirect, "I[%d] %s: mem write packet %s sent\n", my_indirect_id, __func__, pkt->print());
+void IndirectAccessUnit::memWritePacketSent(Addr addr) {
+    DPRINTF(MAAIndirect, "I[%d] %s: mem write packet 0x%lx sent\n", my_indirect_id, __func__, addr);
     my_received_responses++;
-    if (maa->allIndirectPacketsSent() && (my_received_responses == my_expected_responses)) {
+    if (maa->allIndirectPacketsSent(my_indirect_id) && (my_received_responses == my_expected_responses)) {
         DPRINTF(MAAIndirect, "I[%d] %s: all responses received, calling execution again in state %s!\n", my_indirect_id, __func__, status_names[(int)state]);
         scheduleNextExecution(true);
     } else {
         DPRINTF(MAAIndirect, "I[%d] %s: expected: %d, received: %d!\n", my_indirect_id, __func__, my_expected_responses, my_received_responses);
     }
 }
-void IndirectAccessUnit::cacheReadPacketSent(PacketPtr pkt) {
-    DPRINTF(MAAIndirect, "I[%d] %s: cache read packet %s sent\n", my_indirect_id, __func__, pkt->print());
-    LoadsCacheHitAccessingTimeHistory[pkt->getAddr()] = curTick();
+void IndirectAccessUnit::cacheReadPacketSent(Addr addr) {
+    DPRINTF(MAAIndirect, "I[%d] %s: cache read packet 0x%lx sent\n", my_indirect_id, __func__, addr);
+    LoadsCacheHitAccessingTimeHistory[addr] = curTick();
     (*maa->stats.IND_LoadsCacheHitAccessing[my_indirect_id])++;
 }
-void IndirectAccessUnit::cacheWritePacketSent(PacketPtr pkt) {
-    DPRINTF(MAAIndirect, "I[%d] %s: cache write packet %s sent\n", my_indirect_id, __func__, pkt->print());
+void IndirectAccessUnit::cacheWritePacketSent(Addr addr) {
+    DPRINTF(MAAIndirect, "I[%d] %s: cache write packet 0x%lx sent\n", my_indirect_id, __func__, addr);
     my_received_responses++;
-    if (maa->allIndirectPacketsSent() && (my_received_responses == my_expected_responses)) {
+    if (maa->allIndirectPacketsSent(my_indirect_id) && (my_received_responses == my_expected_responses)) {
         DPRINTF(MAAIndirect, "I[%d] %s: all responses received, calling execution again in state %s!\n", my_indirect_id, __func__, status_names[(int)state]);
         scheduleNextExecution(true);
     } else {
         DPRINTF(MAAIndirect, "I[%d] %s: expected: %d, received: %d!\n", my_indirect_id, __func__, my_expected_responses, my_received_responses);
     }
 }
-bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_block_cached, int core_id) {
+bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_block_cached) {
     std::vector addr_vec = maa->map_addr(addr);
     int RT_idx = getRowTableIdx(my_RT_config, addr_vec[ADDR_CHANNEL_LEVEL], addr_vec[ADDR_RANK_LEVEL], addr_vec[ADDR_BANKGROUP_LEVEL], addr_vec[ADDR_BANK_LEVEL]);
     Addr grow_addr = getGrowAddr(my_RT_config, addr_vec[ADDR_BANKGROUP_LEVEL], addr_vec[ADDR_BANK_LEVEL], addr_vec[ADDR_ROW_LEVEL]);
@@ -1156,11 +1155,11 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
                 DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] = %f!\n", my_indirect_id, __func__, i, write_pkt->getPtr<double>()[i]);
         }
         DPRINTF(MAAIndirect, "I[%d] %s: created %s to send in %d cycles\n", my_indirect_id, __func__, write_pkt->print(), total_latency);
-        maa->sendPacket(FuncUnitType::INDIRECT, write_pkt, maa->getClockEdge(total_latency), my_force_cache);
+        maa->sendPacket(FuncUnitType::INDIRECT, my_indirect_id, write_pkt, maa->getClockEdge(total_latency), my_force_cache);
         (*maa->stats.IND_StoresMemAccessing[my_indirect_id])++;
     } else {
         my_received_responses++;
-        if (maa->allIndirectPacketsSent() && my_received_responses == my_expected_responses) {
+        if (maa->allIndirectPacketsSent(my_indirect_id) && my_received_responses == my_expected_responses) {
             DPRINTF(MAAIndirect, "I[%d] %s: all responses received, calling execution again!\n", my_indirect_id, __func__);
             scheduleNextExecution(true);
         } else {

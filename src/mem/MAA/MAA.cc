@@ -167,10 +167,15 @@ MAA::MAA(const MAAParams &p)
         cpuSidePorts.push_back(new CpuSidePort(portName, *this, "CpuSidePort"));
         cpuSidePorts[i]->allocate(i, p.max_outstanding_cpu_side_packets);
     }
-    lastCacheSidePortSend = 0;
 
     my_last_idle_tick = curTick();
     my_last_reset_tick = curTick();
+    my_num_outstanding_indirect_pkts = new uint32_t[num_maas];
+    my_num_outstanding_stream_pkts = new uint32_t[num_maas];
+    for (int i = 0; i < num_maas; i++) {
+        my_num_outstanding_indirect_pkts[i] = 0;
+        my_num_outstanding_stream_pkts[i] = 0;
+    }
 }
 
 void MAA::init() {
@@ -188,6 +193,8 @@ MAA::~MAA() {
         delete port;
     for (auto port : cpuSidePorts)
         delete port;
+    delete[] my_num_outstanding_indirect_pkts;
+    delete[] my_num_outstanding_stream_pkts;
 }
 
 void MAA::addAddrRegion(Addr start, Addr end, int8_t id) {
@@ -197,8 +204,7 @@ void MAA::addAddrRegion(Addr start, Addr end, int8_t id) {
     maxRegionID = -1;
     for (int i = 0; i < MAX_CMD_REGIONS; i++) {
         if (start <= addrRegions[i].first && addrRegions[i].first < end) {
-            DPRINTF(MAA, "Region[%d]:[0x%x-0x%x] overlaps with new Region[%d]:[0x%x-0x%x], removing it\n", i, addrRegions[i].first, addrRegions[i].second, id, start, end);
-            addrRegions[i] = {0, 0};
+            panic("Region[%d]:[0x%x-0x%x] overlaps with new Region[%d]:[0x%x-0x%x]\n", i, addrRegions[i].first, addrRegions[i].second, id, start, end);
         } else {
             maxRegionID = i;
         }
@@ -276,12 +282,17 @@ void MAA::addRamulator(memory::Ramulator2 *_ramulator2) {
             m_addr_bits[ADDR_CHANNEL_LEVEL],
             m_tx_offset);
     assert(m_num_levels == 6);
-    panic_if(memSidePorts.size() != m_org[ADDR_CHANNEL_LEVEL], "Number of memory channels %d != number of memside ports %d\n", m_org[ADDR_CHANNEL_LEVEL], memSidePorts.size());
-    mem_channels_blocked = new bool[m_org[ADDR_CHANNEL_LEVEL]];
-    for (int i = 0; i < m_org[ADDR_CHANNEL_LEVEL]; i++) {
+    num_channels = m_org[ADDR_CHANNEL_LEVEL];
+    panic_if(memSidePorts.size() != num_channels, "Number of memory channels %d != number of memside ports %d\n", num_channels, memSidePorts.size());
+    mem_channels_blocked = new bool[num_channels];
+    for (int i = 0; i < num_channels; i++) {
         mem_channels_blocked[i] = false;
     }
-    cache_blocked = false;
+    panic_if(cacheSidePorts.size() != num_cores, "Number of cores %d != number of cacheside ports %d\n", num_cores, cacheSidePorts.size());
+    cache_bus_blocked = new bool[num_cores];
+    for (int i = 0; i < num_cores; i++) {
+        cache_bus_blocked[i] = false;
+    }
     for (int i = 0; i < memSidePorts.size(); i++) {
         memSidePorts[i]->allocate(i);
     }
@@ -293,10 +304,18 @@ void MAA::addRamulator(memory::Ramulator2 *_ramulator2) {
                                         reorder_row_table,
                                         num_initial_row_table_slices,
                                         rowtable_latency,
-                                        m_org[ADDR_CHANNEL_LEVEL],
+                                        num_channels,
                                         num_cores,
                                         this);
     }
+    my_outstanding_indirect_cache_read_pkts = new std::multiset<OutstandingPacket, CompareByTick>[num_cores];
+    my_outstanding_indirect_cache_write_pkts = new std::multiset<OutstandingPacket, CompareByTick>[num_cores];
+    my_outstanding_indirect_mem_write_pkts = new std::multiset<OutstandingPacket, CompareByTick>[num_channels];
+    my_outstanding_indirect_mem_read_pkts = new std::multiset<OutstandingPacket, CompareByTick>[num_channels];
+    my_outstanding_stream_cache_read_pkts = new std::multiset<OutstandingPacket, CompareByTick>[num_cores];
+    my_outstanding_stream_cache_write_pkts = new std::multiset<OutstandingPacket, CompareByTick>[num_cores];
+    my_outstanding_stream_mem_write_pkts = new std::multiset<OutstandingPacket, CompareByTick>[num_cores];
+    my_outstanding_stream_mem_read_pkts = new std::multiset<OutstandingPacket, CompareByTick>[num_cores];
 }
 // RoBaRaCoCh address mapping taking from the Ramulator2
 int slice_lower_bits(uint64_t &addr, int bits) {

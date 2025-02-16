@@ -27,45 +27,11 @@
 
 namespace gem5 {
 
-void MAA::recvMemTimingResp(PacketPtr pkt) {
-    DPRINTF(MAAMemPort, "%s: received %s, cmd: %s, size: %d\n", __func__, pkt->print(), pkt->cmdString(), pkt->getSize());
-    switch (pkt->cmd.toInt()) {
-    case MemCmd::ReadExResp:
-    case MemCmd::ReadResp: {
-        assert(pkt->getSize() == 64);
-        std::vector<uint32_t> data;
-        std::vector<uint16_t> wid;
-        for (int i = 0; i < 64; i += 4) {
-            if (pkt->req->getByteEnable()[i] == true) {
-                data.push_back(*(pkt->getPtr<uint32_t>() + i / 4));
-                wid.push_back(i / 4);
-            }
-        }
-        bool received = false;
-        for (int i = 0; i < num_maas; i++) {
-            if (indirectAccessUnits[i].getState() == IndirectAccessUnit::Status::Fill ||
-                indirectAccessUnits[i].getState() == IndirectAccessUnit::Status::Request) {
-                if (indirectAccessUnits[i].recvData(pkt->getAddr(), pkt->getPtr<uint8_t>(), false)) {
-                    panic_if(received, "Received multiple responses for the same request\n");
-                }
-            }
-        }
-        for (int i = 0; i < num_maas; i++) {
-            if (streamAccessUnits[i].getState() == StreamAccessUnit::Status::Request) {
-                panic_if(streamAccessUnits[i].recvData(pkt->getAddr(), pkt->getPtr<uint8_t>()),
-                         "Received multiple responses for the same request\n");
-            }
-        }
-        break;
-    }
-    default:
-        assert(false);
-    }
-}
 bool MAA::MemSidePort::recvTimingResp(PacketPtr pkt) {
     /// print the packet
     DPRINTF(MAAMemPort, "%s: received %s\n", __func__, pkt->print());
-    maa->recvMemTimingResp(pkt);
+    maa->recvTimingResp(pkt, false);
+    pkt->deleteData();
     delete pkt;
     return true;
 }

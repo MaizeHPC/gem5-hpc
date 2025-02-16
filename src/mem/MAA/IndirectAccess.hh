@@ -94,12 +94,12 @@ public:
     bool scheduleNextExecution(bool force = false);
     void scheduleExecuteInstructionEvent(int latency = 0);
     void setInstruction(Instruction *_instruction);
-    void memWritePacketSent(PacketPtr pkt);
-    void memReadPacketSent(PacketPtr pkt);
-    void cacheWritePacketSent(PacketPtr pkt);
-    void cacheReadPacketSent(PacketPtr pkt);
+    void memWritePacketSent(Addr addr);
+    void memReadPacketSent(Addr addr);
+    void cacheWritePacketSent(Addr addr);
+    void cacheReadPacketSent(Addr addr);
 
-    bool recvData(const Addr addr, uint8_t *dataptr, bool is_block_cached, int core_id = -1);
+    bool recvData(const Addr addr, uint8_t *dataptr, bool is_block_cached);
 
     /* Related to BaseMMU::Translation Inheretance */
     void markDelayed() override {}

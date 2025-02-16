@@ -27,70 +27,10 @@
 
 namespace gem5 {
 
-void MAA::recvCacheTimingResp(PacketPtr pkt, int core_id) {
-    /// print the packet
-    DPRINTF(MAACachePort, "%s: received %s, cmd: %s, size: %d\n",
-            __func__,
-            pkt->print(),
-            pkt->cmdString(),
-            pkt->getSize());
-    // for (int i = 0; i < pkt->getSize(); i++) {
-    //     DPRINTF(MAACachePort, "%02x %s\n", pkt->getPtr<uint8_t>()[i], pkt->req->getByteEnable()[i] ? "True" : "False");
-    // }
-    switch (pkt->cmd.toInt()) {
-    case MemCmd::ReadExResp:
-    case MemCmd::ReadResp: {
-        assert(pkt->getSize() == 64);
-        std::vector<uint32_t> data;
-        std::vector<uint16_t> wid;
-        for (int i = 0; i < 64; i += 4) {
-            if (pkt->req->getByteEnable()[i] == true) {
-                data.push_back(*(pkt->getPtr<uint32_t>() + i / 4));
-                wid.push_back(i / 4);
-            }
-        }
-        bool received = false;
-        for (int i = 0; i < num_maas; i++) {
-            if (streamAccessUnits[i].getState() == StreamAccessUnit::Status::Request) {
-                if (streamAccessUnits[i].recvData(pkt->getAddr(), pkt->getPtr<uint8_t>(), core_id)) {
-                    panic_if(received, "Received multiple responses for the same request\n");
-                    received = true;
-                }
-            }
-        }
-        if (received == false) {
-            for (int i = 0; i < num_maas; i++) {
-                if (indirectAccessUnits[i].getState() == IndirectAccessUnit::Status::Fill ||
-                    indirectAccessUnits[i].getState() == IndirectAccessUnit::Status::Request) {
-                    if (indirectAccessUnits[i].recvData(pkt->getAddr(), pkt->getPtr<uint8_t>(), true, core_id)) {
-                        panic_if(received, "Received multiple responses for the same request\n");
-                    }
-                }
-            }
-        }
-        break;
-    }
-    case MemCmd::InvalidateResp: {
-        assert(false);
-        // assert(pkt->getSize() == 64);
-        // AddressRangeType address_range = AddressRangeType(pkt->getAddr(), addrRanges);
-        // assert(address_range.getType() == AddressRangeType::Type::SPD_DATA_CACHEABLE_RANGE);
-        // Addr offset = address_range.getOffset();
-        // int tile_id = offset / (num_tile_elements * sizeof(uint32_t));
-        // int element_id = offset % (num_tile_elements * sizeof(uint32_t));
-        // assert(element_id % sizeof(uint32_t) == 0);
-        // element_id /= sizeof(uint32_t);
-        // invalidator->recvData(tile_id, element_id);
-        break;
-    }
-    default:
-        assert(false);
-    }
-}
 bool MAA::CacheSidePort::recvTimingResp(PacketPtr pkt) {
     /// print the packet
     DPRINTF(MAACachePort, "%s: received %s\n", __func__, pkt->print());
-    maa->recvCacheTimingResp(pkt, core_id);
+    maa->recvTimingResp(pkt, true);
     outstandingCacheSidePackets--;
     if (blockReason == BlockReason::MAX_XBAR_PACKETS) {
         setUnblocked(BlockReason::MAX_XBAR_PACKETS);
@@ -173,15 +113,13 @@ bool MAA::CacheSidePort::sendPacket(PacketPtr pkt) {
     return true;
 }
 bool MAA::sendPacketCache(PacketPtr pkt) {
-    bool success = cacheSidePorts[lastCacheSidePortSend]->sendPacket(pkt);
-    if (success)
-        lastCacheSidePortSend = (lastCacheSidePortSend + 1) % num_cores;
-    return success;
+    int pkt_bus_id = core_addr(pkt->getAddr());
+    return cacheSidePorts[pkt_bus_id]->sendPacket(pkt);
 }
 void MAA::CacheSidePort::setUnblocked(BlockReason reason) {
     assert(blockReason == reason);
     blockReason = BlockReason::NOT_BLOCKED;
-    maa->unblockCache();
+    maa->unblockCache(core_id);
 }
 
 void MAA::CacheSidePort::allocate(int _core_id, int _maxOutstandingCacheSidePackets) {
