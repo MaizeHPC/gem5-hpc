@@ -1,6 +1,6 @@
 #include "mem/MAA/ALU.hh"
 #include "mem/MAA/IF.hh"
-#include "mem/MAA/IndirectAccess.hh"
+#include "mem/MAA/IndirectAccess1.hh"
 #include "mem/MAA/Invalidator.hh"
 #include "mem/MAA/RangeFuser.hh"
 #include "mem/MAA/SPD.hh"

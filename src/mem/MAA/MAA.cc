@@ -1,6 +1,6 @@
 #include "mem/MAA/ALU.hh"
 #include "mem/MAA/IF.hh"
-#include "mem/MAA/IndirectAccess.hh"
+#include "mem/MAA/IndirectAccess1.hh"
 #include "mem/MAA/Invalidator.hh"
 #include "mem/MAA/RangeFuser.hh"
 #include "mem/MAA/SPD.hh"
@@ -297,13 +297,16 @@ void MAA::addRamulator(memory::Ramulator2 *_ramulator2) {
         memSidePorts[i]->allocate(i);
     }
     for (int i = 0; i < num_maas; i++) {
-        indirectAccessUnits[i].allocate(i, num_tile_elements, num_row_table_rows_per_slice,
-                                        num_row_table_entries_per_subslice_row,
-                                        num_row_table_config_cache_entries,
-                                        reconfigure_row_table,
+        indirectAccessUnits[i].allocate(i, num_tile_elements, 
+                                        // num_row_table_rows_per_slice,
+                                        // num_row_table_entries_per_subslice_row,
+                                        // num_row_table_config_cache_entries,
+                                        // reconfigure_row_table,
                                         reorder_row_table,
-                                        num_initial_row_table_slices,
-                                        rowtable_latency,
+                                        // num_initial_row_table_slices,
+                                        // rowtable_latency,
+                                        num_request_table_addresses, 
+                                        num_request_table_entries_per_address,
                                         num_channels,
                                         num_cores,
                                         this);
@@ -536,6 +539,7 @@ void MAA::dispatchRegister() {
         }
     }
 }
+
 void MAA::dispatchInstruction() {
     DPRINTF(MAAController, "%s: dispatching instruction...!\n", __func__);
     assert(my_instruction_pkts.size() == my_instructions.size());

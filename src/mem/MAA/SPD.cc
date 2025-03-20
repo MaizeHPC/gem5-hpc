@@ -5,7 +5,7 @@
 #include "mem/MAA/StreamAccess.hh"
 #include "mem/MAA/ALU.hh"
 #include "mem/MAA/RangeFuser.hh"
-#include "mem/MAA/IndirectAccess.hh"
+#include "mem/MAA/IndirectAccess1.hh"
 #include "base/types.hh"
 #include "debug/SPD.hh"
 #include "sim/cur_tick.hh"

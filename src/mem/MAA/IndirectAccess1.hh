@@ -1,5 +1,5 @@
-#ifndef __MEM_MAA_INDIRECT_ACCESS_HH__
-#define __MEM_MAA_INDIRECT_ACCESS_HH__
+#ifndef __MEM_MAA_INDIRECT_ACCESS1_HH__
+#define __MEM_MAA_INDIRECT_ACCESS1_HH__
 
 #include <cassert>
 #include <cstdint>
@@ -36,10 +36,6 @@ public:
         max
     };
 
-    RequestTable *request_table;
-    const static int num_request_table_addresses = 256;
-    const static int num_request_table_entries_per_address = 256;
-
 protected:
     std::string status_names[7] = {
         "Idle",
@@ -49,31 +45,38 @@ protected:
         "Request",
         "Response",
         "max"};
-    int total_num_RT_subslices;
-    int num_RT_configs;
-    int my_RT_config;
-    int initial_RT_config;
-    int **RT_slice_org;
-    int *num_RT_slices;
-    int *num_RT_rows_total;
-    Addr *num_RT_possible_grows;
-    int *num_RT_subslices;
-    int *num_RT_slice_columns;
-    Addr *RT_config_addr;
-    int *RT_config_cache;
-    Tick *RT_config_cache_tick;
+    // int total_num_RT_subslices;
+    // int num_RT_configs;
+    // int my_RT_config;
+    // int initial_RT_config;
+    // int **RT_slice_org;
+    // int *num_RT_slices;
+    // int *num_RT_rows_total;
+    // Addr *num_RT_possible_grows;
+    // int *num_RT_subslices;
+    // int *num_RT_slice_columns;
+    // Addr *RT_config_addr;
+    // int *RT_config_cache;
+    // Tick *RT_config_cache_tick;
+
     int num_tile_elements;
-    int num_RT_rows_per_slice;
-    int num_RT_entries_per_subslice_row;
-    int num_RT_config_cache_entries;
+    // int num_RT_rows_per_slice;
+    // int num_RT_entries_per_subslice_row;
+    // int num_RT_config_cache_entries;
+
     int num_channels;
     int num_cores;
-    bool reconfigure_RT;
     bool reorder_RT;
-    int num_initial_RT_slices;
+    // bool reconfigure_RT;
+    // int num_initial_RT_slices;
+
     Status state;
-    RowTableSlice **RT;
-    OffsetTable *offset_table;
+    RequestTable *request_table;
+    int num_request_table_addresses;
+    int num_request_table_entries_per_address;
+    // RowTableSlice **RT;
+    // OffsetTable *offset_table;
+
     int dst_tile_id;
     Cycles rowtable_latency;
     std::map<Addr, Tick> LoadsCacheHitRespondingTimeHistory;
@@ -89,13 +92,15 @@ public:
     ~IndirectAccessUnit();
     void allocate(int _my_indirect_id,
                   int _num_tile_elements,
-                  int _num_row_table_rows_per_slice,
-                  int _num_row_table_entries_per_subslice_row,
-                  int _num_row_table_config_cache_entries,
-                  bool _reconfigure_row_table,
+                //   int _num_row_table_rows_per_slice,
+                //   int _num_row_table_entries_per_subslice_row,
+                //   int _num_row_table_config_cache_entries,
+                //   bool _reconfigure_row_table,
                   bool _reorder_row_table,
-                  int _num_initial_row_table_slice,
-                  Cycles _rowtable_latency,
+                  int _num_request_table_addresses, 
+                  int _num_request_table_entries_per_address,
+                //   int _num_initial_row_table_slice,
+                //   Cycles _rowtable_latency,
                   int _num_channels,
                   int _num_cores,
                   MAA *_maa);
@@ -141,8 +146,9 @@ protected:
     int my_indirect_id;
     Tick my_SPD_read_finish_tick;
     Tick my_SPD_write_finish_tick;
-    Tick my_RT_read_access_finish_tick;
-    Tick my_RT_write_access_finish_tick;
+    Tick my_RT_access_finish_tick;
+
+
     Tick my_decode_start_tick;
     Tick my_fill_start_tick;
     Tick my_build_start_tick;
@@ -152,24 +158,22 @@ protected:
     std::set<Addr> my_unique_ROW_addrs;
 
     Addr translatePacket(Addr vaddr);
-    bool checkAndResetAllRowTablesSent();
-    int getRowTableIdx(int RT_config, int channel, int rank, int bankgroup, int bank);
-    Addr getGrowAddr(int RT_config, int bankgroup, int bank, int row);
-    int getRowTableConfig(Addr addr);
-    void setRowTableConfig(Addr addr, int num_CLs, int num_ROWs);
+    // bool checkAndResetAllRowTablesSent();
+    // int getRowTableIdx(int RT_config, int channel, int rank, int bankgroup, int bank);
+    // Addr getGrowAddr(int RT_config, int bankgroup, int bank, int row);
+    // int getRowTableConfig(Addr addr);
+    // void setRowTableConfig(Addr addr, int num_CLs, int num_ROWs);
     void checkTileReady();
     bool checkElementReady();
     bool checkReadyForFinish();
-    void fillRowTable(bool &finished, bool &waitForFinish, bool &waitForElement, bool &needDrain, int &num_spd_read_condidx_accesses, int &num_rowtable_accesses);
+    void fillRequestTable(bool &finished, bool &waitForFinish, bool &waitForElement, bool &needDrain, int &num_spd_read_condidx_accesses, int &num_rowtable_accesses);
     void executeInstruction();
     EventFunctionWrapper executeInstructionEvent;
     void check_reset();
     Cycles updateLatency(int num_spd_read_data_accesses,
                          int num_spd_read_condidx_accesses,
                          int num_spd_write_accesses,
-                         int num_rowtable_read_accesses,
-                         int num_rowtable_write_accesses,
-                         int RT_access_parallelism);
+                         int num_requesttable_accesses);
 
 public:
     void createReadPacket(Addr addr, int latency);

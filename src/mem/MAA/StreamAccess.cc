@@ -25,6 +25,7 @@ StreamAccessUnit::StreamAccessUnit()
     request_table = nullptr;
     my_instruction = nullptr;
 }
+
 void StreamAccessUnit::allocate(int _my_stream_id, unsigned int _num_request_table_addresses, unsigned int _num_request_table_entries_per_address, unsigned int _num_tile_elements, MAA *_maa) {
     my_stream_id = _my_stream_id;
     num_tile_elements = _num_tile_elements;
