@@ -100,27 +100,25 @@ void MAA::sendPacket(FuncUnitType funcUnit, uint8_t maaID, PacketPtr pkt, Tick t
         }
     } else {
         my_outstanding_pkt_map[paddr] = OutstandingPacket(pkt, paddr, tick, pkt->cmd);
-        my_outstanding_pkt_map[paddr].cached = true;
+        bool hit_cache = true;
         if (force_cache_access == false && force_cache == false) {
             RequestPtr snoop_req = std::make_shared<Request>(pkt->req->getPaddr(), pkt->req->getSize(), pkt->req->getFlags(), pkt->req->requestorId());
             PacketPtr snoop_pkt = new Packet(snoop_req, MemCmd::SnoopReq);
             snoop_pkt->setExpressSnoop();
             snoop_pkt->headerDelay = snoop_pkt->payloadDelay = 0;
             sendSnoopPacketCpu(snoop_pkt);
-            my_outstanding_pkt_map[paddr].cached = snoop_pkt->isBlockCached();
-            DPRINTF(MAAPort, "%s: force_cache is false, snoop request for %s determined %s\n", __func__, pkt->print(), my_outstanding_pkt_map[paddr].cached ? "cached" : "not cached");
+            hit_cache = snoop_pkt->isBlockCached();
+            DPRINTF(MAAPort, "%s: force_cache is false, snoop request for %s determined %s\n", __func__, pkt->print(), hit_cache ? "cached" : "not cached");
             delete snoop_pkt;
         }
         my_outstanding_pkt_map[paddr].maaIDs.push_back(maaID);
         my_outstanding_pkt_map[paddr].funcUnits.push_back(funcUnit);
         int core_id = core_addr(paddr);
         int channel_id = channel_addr(paddr);
-        bool send_cache = false;
-        bool send_mem = false;
         if (funcUnit == FuncUnitType::INDIRECT) {
             my_num_outstanding_indirect_pkts[maaID]++;
-            if (my_outstanding_pkt_map[paddr].cached) {
-                send_cache = true;
+            if (hit_cache) {
+                my_outstanding_pkt_map[paddr].cached = true;
                 if (pkt->isRead()) {
                     my_outstanding_indirect_cache_read_pkts[core_id].insert(my_outstanding_pkt_map[paddr]);
                     DPRINTF(MAAPort, "%s: inserting my_outstanding_indirect_cache_read_pkts[%s\n", __func__, core_id);
@@ -131,7 +129,7 @@ void MAA::sendPacket(FuncUnitType funcUnit, uint8_t maaID, PacketPtr pkt, Tick t
                     panic("Invalid packet type\n");
                 }
             } else {
-                send_mem = true;
+                my_outstanding_pkt_map[paddr].cached = false;
                 if (pkt->isRead()) {
                     my_outstanding_indirect_mem_read_pkts[channel_id].insert(my_outstanding_pkt_map[paddr]);
                     DPRINTF(MAAPort, "%s: inserting my_outstanding_indirect_mem_read_pkts[%s\n", __func__, channel_id);
@@ -144,8 +142,8 @@ void MAA::sendPacket(FuncUnitType funcUnit, uint8_t maaID, PacketPtr pkt, Tick t
             }
         } else if (funcUnit == FuncUnitType::STREAM) {
             my_num_outstanding_stream_pkts[maaID]++;
-            send_cache = true;
-            if (my_outstanding_pkt_map[paddr].cached) {
+            my_outstanding_pkt_map[paddr].cached = true;
+            if (hit_cache) {
                 if (pkt->isRead()) {
                     my_outstanding_stream_cache_read_pkts[core_id].insert(my_outstanding_pkt_map[paddr]);
                     DPRINTF(MAAPort, "%s: inserting my_outstanding_stream_cache_read_pkts[%s\n", __func__, core_id);
@@ -169,12 +167,10 @@ void MAA::sendPacket(FuncUnitType funcUnit, uint8_t maaID, PacketPtr pkt, Tick t
         } else {
             panic("Invalid func unit type\n");
         }
-        if (send_cache) {
+        if (my_outstanding_pkt_map[paddr].cached) {
             scheduleNextSendCache();
-        } else if (send_mem) {
-            scheduleNextSendMem();
         } else {
-            panic("Invalid send type\n");
+            scheduleNextSendMem();
         }
     }
 }
@@ -571,6 +567,7 @@ void MAA::recvTimingResp(PacketPtr pkt, bool cached) {
     panic_if(my_outstanding_pkt_map.find(paddr) == my_outstanding_pkt_map.end(), "%s: response for packet %s not found in my_outstanding_pkt_map\n", __func__, pkt->print());
     OutstandingPacket tmp = my_outstanding_pkt_map[paddr];
     panic_if(tmp.sent == false, "%s received response %s for an unsent packet!\n", pkt->cmdString(), pkt->getSize());
+    panic_if(cached != tmp.cached, "%s: response %s cached %d does not match with outstanding packet cached %d\n", __func__, pkt->print(), cached, tmp.cached);
     my_outstanding_pkt_map.erase(paddr);
     for (int i = 0; i < tmp.maaIDs.size(); i++) {
         if (tmp.funcUnits[i] == FuncUnitType::INDIRECT) {

@@ -9,6 +9,8 @@ parser.add_argument('--mode', type=str, help='Mode of the simulation.', required
 parser.add_argument('--target', type=int, help='Traget stat number.', required=True)
 parser.add_argument('--mcpat_template', type=str, help='MCPAT template to use.', default="configs/template.xml")
 parser.add_argument('--no_mcpat_run', help='Do not run MCPAT, and use pre-existing files.', action="store_true")
+parser.add_argument('--mem_channels', type=int, help='Number of memory channels.', default=2, required=False)
+
 
 
 args = parser.parse_args()
@@ -21,6 +23,7 @@ elif mode == "base":
 target_stats = args.target
 mcpat_template = args.mcpat_template
 mcpat_run = True if args.no_mcpat_run == None or args.no_mcpat_run == False else False
+mem_channels = args.mem_channels
 
 # P_PRE_STBY = 54.9
 # P_ACT_STBY = 75.0
@@ -277,7 +280,7 @@ def parse_gem5_stats(stats, mode, target_stats):
 
     return cycles, maa_cycles, maa_indirect_cycles, cache_stats, instruction_types
 
-def parse_ramulator_stats(stats, target_stats):
+def parse_ramulator_stats(stats, target_stats, num_channels):
     # print(stats)
     DRAM_RD = 0
     DRAM_WR = 0
@@ -300,7 +303,6 @@ def parse_ramulator_stats(stats, target_stats):
         # print(COMMAND)
         os.system(COMMAND)
         cycles = 0
-        num_channels = 2
         num_reads = [0 for _ in range(num_channels)]
         num_writes = [0 for _ in range(num_channels)]
         num_acts = [0 for _ in range(num_channels)]
@@ -491,7 +493,7 @@ def get_print_results(directory, target_stats, mode):
     stats = f"{directory}/stats.txt"
     cycles, maa_cycles, maa_indirect_cycles, cache_stats, instruction_types = parse_gem5_stats(stats, mode, target_stats)
     logs = f"{directory}/logs_run.txt"
-    DRAM_RD, DRAM_WR, DRAM_ACT, DRAM_RD_BW, DRAM_WR_BW, DRAM_total_BW, DRAM_RB_hitrate, DRAM_CTRL_occ, DRAM_PRE_STBY_ENERGY, DRAM_ACT_STBY_ENERGY, DRAM_ACTPRE_ENERGY, DRAM_RD_ENERGY, DRAM_WR_ENERGY, DRAM_DQ_ENERGY, total_DRAM_energy = parse_ramulator_stats(logs, target_stats)
+    DRAM_RD, DRAM_WR, DRAM_ACT, DRAM_RD_BW, DRAM_WR_BW, DRAM_total_BW, DRAM_RB_hitrate, DRAM_CTRL_occ, DRAM_PRE_STBY_ENERGY, DRAM_ACT_STBY_ENERGY, DRAM_ACTPRE_ENERGY, DRAM_RD_ENERGY, DRAM_WR_ENERGY, DRAM_DQ_ENERGY, total_DRAM_energy = parse_ramulator_stats(logs, target_stats, mem_channels)
     core_static_power, core_dynamic_power, core_power, llc_static_power, llc_dynamic_power, llc_power, core_static_energy, core_dynamic_energy, core_energy, llc_static_energy, llc_dynamic_energy, llc_energy = parse_mcpat_stats(directory, target_stats, cycles / CORE_FREQUENCY)
     print(f"{cycles}", end=",")
     for maa_cycle in all_maa_cycles:

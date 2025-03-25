@@ -153,7 +153,8 @@ def config_3L_cache(options, system):
             system.l3.write_buffers = system.l3.write_buffers * options.cpu_buffer_enlarge_factor
 
         system.tol3bus = L3XBar(clk_domain=system.cpu_clk_domain)
-        for _ in range(options.num_cpus):
+        for _ in range(options.l3_ports):
+            print(f"Creating {options.l3_ports} L3 ports")
             system.l3.cpu_sides = system.tol3bus.mem_side_ports
             system.membus.cpu_side_ports = system.l3.mem_sides
 

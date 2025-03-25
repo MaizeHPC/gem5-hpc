@@ -2,7 +2,7 @@ import argparse
 import os
 from threading import Thread, Lock
 
-parallelism = 32
+parallelism = 8
 GEM5_DIR = "/home/arkhadem/gem5-hpc"
 DATA_DIR = "/data4/arkhadem/gem5-hpc"
 CPT_DIR = f"{DATA_DIR}/checkpoints_new"
@@ -31,13 +31,13 @@ all_tile_sizes_str = ["1K", "2K", "4K", "8K", "32K"]
 # all_scaling_maas = [1, 2, 4]
 # all_scaling_cores = [4, 8]
 # all_scaling_maas = [1, 2]
-all_scaling_cores = [8]
-all_scaling_maas = [2]
+all_scaling_cores = [16] #[8] # [8]
+all_scaling_maas = [4] # [2]
 
-DO_GENERAL_EXP = True
-DO_REORDER_FORCE_CACHE_EXP = True
-DO_TILE_SIZE_EXP = True
-DO_SCALING_EXP = False
+DO_GENERAL_EXP = False
+DO_REORDER_FORCE_CACHE_EXP = False
+DO_TILE_SIZE_EXP = False
+DO_SCALING_EXP = True
 
 RUN_MICRO = False
 RUN_NAS = True
@@ -127,8 +127,10 @@ l2_size = "256kB"
 l2_assoc = 4
 l2_mshrs = 32
 l2_write_buffers = 16
-l3_size_per_core_maa = 2
-l3_assoc_per_core_maa = 2
+l3_size_per_core = 2
+l3_size_extramaa_per_core = 0.5
+l3_assoc_per_core = 2
+l3_assoc_extramaa_per_core = 0.5
 l3_mshrs_per_core = 64
 l3_write_buffers_per_core = 32
 mem_type = "Ramulator2"
@@ -148,7 +150,7 @@ def add_command_checkpoint(directory, command, options, num_cores = 4):
     if os.path.isdir(directory):
         contents = os.listdir(directory)
         for content in contents:
-            if "cpt." in content:
+            if content[:3] == "cpt":
                 print(f"Checkpoint {directory} already exists!")
                 return None
     COMMAND = f"rm -r {directory} 2>&1 > /dev/null; sleep 1; mkdir -p {directory}; sleep 2; "
@@ -181,21 +183,30 @@ def add_command_run_MAA(directory,
                         do_prefetch = True,
                         do_reorder = True,
                         force_cache = False):
-
-        
+    return None
+    if os.path.isdir(directory):
+        contents = os.listdir(directory)
+        for content in contents:
+            if "stats.txt" in content:
+                with open(f"{directory}/stats.txt", "r") as f:
+                    lines = f.readlines()
+                    if len(lines) > 50:
+                        print(f"Experiment {directory} already done!")
+                        return None
+                    
     have_maa = False
     l2_hwp_type = "StridePrefetcher"
     if mode == "DMP":
         l2_hwp_type = "DiffMatchingPrefetcher"
-        l3_size = f"{l3_size_per_core_maa * (num_cores+num_maas)}MB"
-        l3_assoc = l3_assoc_per_core_maa * (num_cores+num_maas)
+        l3_size = f"{int((l3_size_per_core + l3_size_extramaa_per_core) * num_cores)}MB"
+        l3_assoc = int((l3_assoc_per_core + l3_assoc_extramaa_per_core) * num_cores)
     elif mode in ["MAA", "CMP"]:
         have_maa = True
-        l3_size = f"{l3_size_per_core_maa * num_cores}MB"
-        l3_assoc = l3_assoc_per_core_maa * num_cores
+        l3_size = f"{l3_size_per_core * num_cores}MB"
+        l3_assoc = l3_assoc_per_core * num_cores
     elif mode == "BASE":
-        l3_size = f"{l3_size_per_core_maa * (num_cores+num_maas)}MB"
-        l3_assoc = l3_assoc_per_core_maa * (num_cores+num_maas)
+        l3_size = f"{int((l3_size_per_core + l3_size_extramaa_per_core) * num_cores)}MB"
+        l3_assoc = int((l3_assoc_per_core + l3_assoc_extramaa_per_core) * num_cores)
     else:
         raise ValueError("Unknown mode")
     mem_channels = int(mem_channels_per_core * float(num_cores))
@@ -239,6 +250,7 @@ def add_command_run_MAA(directory,
     COMMAND += f"--l3_assoc={l3_assoc} "
     COMMAND += f"--l3_mshrs={l3_mshrs_per_core * num_cores} "
     COMMAND += f"--l3_write_buffers={l3_write_buffers_per_core * num_cores} "
+    COMMAND += f"--l3_ports {num_cores} "
     COMMAND += "--cacheline_size=64 "
     COMMAND += f"--mem-type {mem_type} "
     COMMAND += f"--ramulator-config {ramulator_config} "
@@ -502,7 +514,7 @@ if RUN_NAS:
                                                             command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/NAS/{kernel}/{file_name}",
                                                             options=options,
                                                             num_cores=num_cores)
-                    add_command_run_MAA(directory=f"{SC_RSLT_DIR}/{kernel}/{mode}/{size}/{num_cores}",
+                    add_command_run_MAA(directory=f"{SC_RSLT_DIR}/{kernel}/{mode}/{size}/{num_cores}/{num_maas}",
                                         checkpoint=f"{SC_CPT_DIR}/{kernel}/{mode}/{size}/{num_cores}",
                                         checkpoint_id = checkpoint_id,
                                         command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/NAS/{kernel}/{file_name}",
@@ -581,7 +593,7 @@ if RUN_SPATTER:
                                                             command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/build/{file_name}",
                                                             options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/tests/test-data/{kernel}/all.json",
                                                             num_cores=num_cores)
-                    add_command_run_MAA(directory=f"{SC_RSLT_DIR}/spatter/{kernel}/{mode}/{num_cores}",
+                    add_command_run_MAA(directory=f"{SC_RSLT_DIR}/spatter/{kernel}/{mode}/{num_cores}/{num_maas}",
                                         checkpoint=f"{SC_CPT_DIR}/spatter/{kernel}/{mode}/{num_cores}",
                                         checkpoint_id = checkpoint_id,
                                         command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/spatter/build/{file_name}",
@@ -671,7 +683,7 @@ if RUN_HASHJOIN:
                                                             command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin/src/bin/x86/{file_name}",
                                                             options=f"-a {kernel} -n {num_cores} -r {csize} -s {csize}",
                                                             num_cores=num_cores)
-                    add_command_run_MAA(directory=f"{SC_RSLT_DIR}/{kernel}/{mode}/{csize_str}/{num_cores}",
+                    add_command_run_MAA(directory=f"{SC_RSLT_DIR}/{kernel}/{mode}/{csize_str}/{num_cores}/{num_maas}",
                                         checkpoint=f"{SC_CPT_DIR}/{kernel}/{mode}/{csize_str}/{num_cores}",
                                         checkpoint_id = checkpoint_id,
                                         command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/hashjoin/src/bin/x86/{file_name}",
@@ -757,7 +769,7 @@ if RUN_UME:
                                                             command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/UME/{file_name}",
                                                             options=f"{csize}",
                                                             num_cores=num_cores)
-                    add_command_run_MAA(directory=f"{SC_RSLT_DIR}/{kernel}/{mode}/{csize_str}/{num_cores}",
+                    add_command_run_MAA(directory=f"{SC_RSLT_DIR}/{kernel}/{mode}/{csize_str}/{num_cores}/{num_maas}",
                                         checkpoint=f"{SC_CPT_DIR}/{kernel}/{mode}/{csize_str}/{num_cores}",
                                         checkpoint_id = checkpoint_id,
                                         command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/UME/{file_name}",
@@ -833,7 +845,7 @@ if RUN_GAPB:
         for kernel in all_GAPB_kernels:
             for mode in all_scaling_modes:
                 for num_cores, num_maas in zip(all_scaling_cores, all_scaling_maas):
-                    lsize = 0 if num_maas == 1 else 1 if num_maas == 2 else 2
+                    lsize = 0 if num_cores == 4 else 1 if num_cores == 8 else 2
                     size = (20+lsize) if kernel == "bc" else (21+lsize) if kernel == "sssp" else (22+lsize)
                     file_name = f"{kernel}_maa_{num_cores}C" if mode == "MAA" else kernel
                     graph_ext = "wsg" if kernel == "sssp" else "sg"
@@ -842,7 +854,7 @@ if RUN_GAPB:
                                                             command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
                                                             options=f"-f {GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/serialized_graph_{size}.{graph_ext} -l -n 1",
                                                             num_cores=num_cores)
-                    add_command_run_MAA(directory=f"{SC_RSLT_DIR}/{kernel}/{mode}/{size}/{num_cores}",
+                    add_command_run_MAA(directory=f"{SC_RSLT_DIR}/{kernel}/{mode}/{size}/{num_cores}/{num_maas}",
                                         checkpoint=f"{SC_CPT_DIR}/{kernel}/{mode}/{size}/{num_cores}",
                                         checkpoint_id = checkpoint_id,
                                         command=f"{GEM5_DIR}/tests/test-progs/MAABenchmarks/gapbs/{file_name}",
@@ -885,7 +897,7 @@ if RUN_MICRO:
                                                                 command=f"{GEM5_DIR}/tests/test-progs/MAA/CISC/test_double_{num_cores}C.o",
                                                                 options=options,
                                                                 num_cores=num_cores)
-                        add_command_run_MAA(directory=f"{SC_RSLT_DIR}/tests/{kernel}/{dtype}/{mode}/{num_cores}",
+                        add_command_run_MAA(directory=f"{SC_RSLT_DIR}/tests/{kernel}/{dtype}/{mode}/{num_cores}/{num_maas}",
                                             checkpoint=f"{SC_CPT_DIR}/tests/{kernel}/{dtype}/{mode}/{num_cores}",
                                             checkpoint_id = checkpoint_id,
                                             command=f"{GEM5_DIR}/tests/test-progs/MAA/CISC/test_double_{num_cores}C.o",

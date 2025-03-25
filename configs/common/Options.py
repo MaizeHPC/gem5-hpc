@@ -212,6 +212,7 @@ def addNoISAOptions(parser):
     parser.add_argument("--l2_write_buffers", type=int, default=16)
     parser.add_argument("--l3_mshrs", type=int, default=64)
     parser.add_argument("--l3_write_buffers", type=int, default=32)
+    parser.add_argument("--l3_ports", type=int, default=1)
     parser.add_argument("--cacheline_size", type=int, default=64)
 
     parser.add_argument("--maa", action="store_true")
