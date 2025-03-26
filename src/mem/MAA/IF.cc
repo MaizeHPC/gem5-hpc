@@ -210,6 +210,12 @@ bool IF::pushInstruction(Instruction _instruction) {
                     return false;
                 }
             }
+            if ((_instruction.accessType == Instruction::AccessType::WRITE) &&
+                (instructions[maa_id][i].accessType != Instruction::AccessType::COMPUTE) &&
+                (_instruction.addrRangeID == instructions[maa_id][i].addrRangeID)) {
+                DPRINTF(MAAController, "%s: %s cannot be pushed b/c of %s!\n", __func__, _instruction.print(), instructions[maa_id][i].print());
+                return false;
+            }
         }
     }
     if (free_instruction_slot == -1) {
