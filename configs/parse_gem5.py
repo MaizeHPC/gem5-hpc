@@ -1,6 +1,6 @@
 import os
 import argparse
-from MCPAT_converter import E2EConvertor
+from scripts.MCPAT_converter import E2EConvertor
 import subprocess
 
 parser = argparse.ArgumentParser(description='Parse gem5.')

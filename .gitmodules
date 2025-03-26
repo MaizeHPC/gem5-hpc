@@ -1,6 +1,0 @@
-[submodule "tests/test-progs/MAABenchmarks"]
-	path = tests/test-progs/MAABenchmarks
-	url = git@github.com:MaizeHPC/MAABenchmarks.git
-[submodule "tests/test-progs/MAA"]
-	path = tests/test-progs/MAA
-	url = git@github.com:MaizeHPC/MAA.git
