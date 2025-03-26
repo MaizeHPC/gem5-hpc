@@ -1,6 +1,3 @@
-[submodule "ext/ramulator2/ramulator2"]
-	path = ext/ramulator2/ramulator2
-	url = git@github.com:MaizeHPC/ramulator2.git
 [submodule "tests/test-progs/MAABenchmarks"]
 	path = tests/test-progs/MAABenchmarks
 	url = git@github.com:MaizeHPC/MAABenchmarks.git
