@@ -34,17 +34,28 @@ RequestTable::RequestTable(MAA *_maa, unsigned int _num_addresses, unsigned int 
     for (int i = 0; i < num_addresses; i++) {
         addresses_valid[i] = false;
     }
+
+    data = new uint8_t*[num_addresses];
+    for(int i = 0; i < num_addresses; i++){
+        data[i] = new uint8_t[64];
+    }
 }
 RequestTable::~RequestTable() {
     for (int i = 0; i < num_addresses; i++) {
         delete[] entries[i];
         delete[] entries_valid[i];
+
+        delete[] data[i];
     }
+
     delete[] entries;
     delete[] entries_valid;
     delete[] addresses;
     delete[] addresses_valid;
+
+    delete data;
 }
+
 std::vector<RequestTableEntry> RequestTable::get_entries(Addr base_addr) {
     std::vector<RequestTableEntry> result;
     for (int i = 0; i < num_addresses; i++) {
@@ -61,6 +72,66 @@ std::vector<RequestTableEntry> RequestTable::get_entries(Addr base_addr) {
     }
     return result;
 }
+
+void RequestTable::delete_entries(Addr base_addr) {
+    for (int i = 0; i < num_addresses; i++) {
+        if (addresses_valid[i] == true && addresses[i] == base_addr) {
+            for (int j = 0; j < num_entries_per_address; j++) {
+                if (entries_valid[i][j] == true) {
+                    entries_valid[i][j] = false;
+                }
+            }
+            addresses_valid[i] = false;
+            break;
+        }
+    }
+}
+
+std::vector<RequestTableEntry> RequestTable::get_entries_no_delete(Addr base_addr) {
+    std::vector<RequestTableEntry> result;
+    for (int i = 0; i < num_addresses; i++) {
+        if (addresses_valid[i] == true && addresses[i] == base_addr) {
+            for (int j = 0; j < num_entries_per_address; j++) {
+                if (entries_valid[i][j] == true) {
+                    result.push_back(entries[i][j]);
+                }
+            }
+            break;
+        }
+    }
+    return result;
+}
+
+void RequestTable::add_data(Addr base_addr, uint8_t* dataptr) {
+    bool found = false;
+    for (int i = 0; i < num_addresses; i++) {
+        if (addresses_valid[i] == true && addresses[i] == base_addr) {
+            memcpy(dataptr, data[i], 64);
+            found = true;
+            break;
+        }
+    }
+    // if there is no entry, break
+    DPRINTF(MAARowTable, "%s: found: %d!\n",
+                     __func__, found);
+    assert(found);
+}
+
+uint8_t* RequestTable::get_data(Addr base_addr) {
+    bool found = false;
+    for (int i = 0; i < num_addresses; i++) {
+        if (addresses_valid[i] == true && addresses[i] == base_addr) {
+            found = true;
+            return data[i];
+        }
+    }
+    // if there is no entry, break
+    DPRINTF(MAARowTable, "%s: found: %d!\n",
+                    __func__, found);
+    assert(found);
+    return nullptr;
+}
+
 bool RequestTable::add_entry(int itr, Addr base_addr, uint16_t wid) {
     int address_itr = -1;
     int free_address_itr = -1;
@@ -106,6 +177,53 @@ bool RequestTable::add_entry(int itr, Addr base_addr, uint16_t wid) {
     }
     return true;
 }
+
+bool RequestTable::add_entry(int itr, Addr base_addr, uint16_t wid, uint64_t data) {
+    int address_itr = -1;
+    int free_address_itr = -1;
+    for (int i = 0; i < num_addresses; i++) {
+        if (addresses_valid[i] == true) {
+            if (addresses[i] == base_addr) {
+                // Duplicate should not be allowed
+                assert(address_itr == -1);
+                address_itr = i;
+            }
+        } else if (free_address_itr == -1) {
+            free_address_itr = i;
+        }
+    }
+    if (address_itr == -1) {
+        if (free_address_itr == -1) {
+            return false;
+        } else {
+            addresses[free_address_itr] = base_addr;
+            addresses_valid[free_address_itr] = true;
+            address_itr = free_address_itr;
+            if (is_stream) {
+                (*maa->stats.STR_NumCacheLineInserted[my_unit_id])++;
+            } else {
+                (*maa->stats.IND_NumCacheLineInserted[my_unit_id])++;
+            }
+        }
+    }
+    int free_entry_itr = -1;
+    for (int i = 0; i < num_entries_per_address; i++) {
+        if (entries_valid[address_itr][i] == false) {
+            free_entry_itr = i;
+            break;
+        }
+    }
+    assert(free_entry_itr != -1);
+    entries[address_itr][free_entry_itr] = RequestTableEntry(itr, wid, data);
+    entries_valid[address_itr][free_entry_itr] = true;
+    if (is_stream) {
+        (*maa->stats.STR_NumWordsInserted[my_unit_id])++;
+    } else {
+        (*maa->stats.IND_NumWordsInserted[my_unit_id])++;
+    }
+    return true;
+}
+
 void RequestTable::check_reset() {
     for (int i = 0; i < num_addresses; i++) {
         panic_if(addresses_valid[i], "Address %d is valid: 0x%lx!\n", i, addresses[i]);

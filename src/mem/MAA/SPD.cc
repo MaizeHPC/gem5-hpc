@@ -237,6 +237,16 @@ SPD::SPD(MAA *_maa,
     for (int i = 0; i < num_write_ports; i++) {
         write_port_busy_until[i] = curTick();
     }
+
+    // to support Queue based implementation 
+    tile_rd_ptrs = new uint32_t[num_tiles];
+    tile_wr_ptrs = new uint32_t[num_tiles];
+
+    for(int i = 0; i < num_tiles; i++){
+        tile_rd_ptrs[i] = 0;
+        tile_wr_ptrs[i] = 0;
+    }
+
 }
 SPD::~SPD() {
     assert(tiles_data != nullptr);
@@ -251,6 +261,10 @@ SPD::~SPD() {
     delete[] write_port_busy_until;
     assert(element_finished != nullptr);
     delete[] element_finished;
+    assert(tile_rd_ptrs != nullptr);
+    delete[] tile_rd_ptrs;
+    assert(tile_wr_ptrs != nullptr);
+    delete[] tile_wr_ptrs;
 }
 
 ///////////////

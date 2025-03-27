@@ -13,10 +13,12 @@ namespace gem5 {
 class MAA;
 
 struct RequestTableEntry {
-    RequestTableEntry() : itr(0), wid(0) {}
+    RequestTableEntry() : itr(0), wid(0), data(0) {}
     RequestTableEntry(int _itr, uint16_t _wid) : itr(_itr), wid(_wid) {}
+    RequestTableEntry(int _itr, uint16_t _wid, uint64_t _data) : itr(_itr), wid(_wid), data(_data) {}
     uint32_t itr;
     uint16_t wid;
+    uint64_t data;
 };
 
 class RequestTable {
@@ -25,8 +27,13 @@ public:
     ~RequestTable();
 
     bool add_entry(int itr, Addr base_addr, uint16_t wid);
+    bool add_entry(int itr, Addr base_addr, uint16_t wid, uint64_t data);
     bool is_full();
     std::vector<RequestTableEntry> get_entries(Addr base_addr);
+    std::vector<RequestTableEntry> get_entries_no_delete(Addr base_addr);
+    void delete_entries(Addr base_addr);
+    void add_data(Addr base_addr, uint8_t* dataptr);
+    uint8_t* get_data(Addr base_addr);
     void check_reset();
     void reset();
 
@@ -34,6 +41,7 @@ protected:
     unsigned int num_addresses;
     unsigned int num_entries_per_address;
     RequestTableEntry **entries;
+    uint8_t** data;
     bool **entries_valid;
     Addr *addresses;
     bool *addresses_valid;

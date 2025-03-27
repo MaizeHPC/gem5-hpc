@@ -6,6 +6,7 @@
 #include <cstring>
 #include <string>
 #include <map>
+#include <queue>
 #include <set>
 
 #include "base/statistics.hh"
@@ -27,19 +28,24 @@ public:
     enum class Status : uint8_t {
         Idle = 0,
         Decode = 1,
-        Fill = 2,
-        Build = 3,
-        Request = 4,
-        Response = 5,
-        RequestSeq = 6,
-        ResponseSeq = 7,
+        FillAndFetch = 2,
+        Fill = 3,
+        Build = 4,
+        Request = 5,
+        Response = 6,
         max
     };
 
+    struct Addr_i {
+        Addr addr;
+        int i;
+    };
+
 protected:
-    std::string status_names[7] = {
+    std::string status_names[9] = {
         "Idle",
         "Decode",
+        "FillAndFetch",
         "Fill",
         "Build",
         "Request",
@@ -83,6 +89,9 @@ protected:
     std::map<Addr, Tick> LoadsCacheHitAccessingTimeHistory;
     std::map<Addr, Tick> LoadsMemAccessingTimeHistory;
 
+    std::queue<int> sentmyIQueue;
+    std::map<int, uint64_t> writeBuffer;
+
     // Modified --- Vasan 
 
 
@@ -114,10 +123,20 @@ public:
     void cacheReadPacketSent(Addr addr);
 
     bool recvData(const Addr addr, uint8_t *dataptr, bool is_block_cached);
+    bool process_data();
+    bool process_data(uint32_t i);
 
     /* Related to BaseMMU::Translation Inheretance */
     void markDelayed() override {}
     void finish(const Fault &fault, const RequestPtr &req, ThreadContext *tc, BaseMMU::Mode mode) override;
+    template<class T> T castuint64_t(uint64_t data){
+        if(sizeof(T) == 4){
+            uint32_t data_new = data;
+            return *((T*) (&data_new)); 
+        } else {
+            return *((T*) (&data)); 
+        }
+    }
 
 protected:
     Instruction *my_instruction;
@@ -133,6 +152,8 @@ protected:
     bool my_cond_tile_ready, my_idx_tile_ready, my_src_tile_ready;
     int my_expected_responses;
     int my_received_responses;
+    int my_processed_count;
+    int my_i_count;
     std::vector<int> my_sorted_indices;
     bool **my_RT_req_sent;
     std::vector<int> *my_RT_slice_order;

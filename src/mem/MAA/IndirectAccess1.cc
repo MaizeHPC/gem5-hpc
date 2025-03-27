@@ -502,21 +502,41 @@ void IndirectAccessUnit::fillRequestTable(bool &finished, bool &waitForFinish, b
             uint16_t wid = (vaddr - block_vaddr) / my_word_size;
 
             // check the entry already exists in the request table 
-            std::vector<RequestTableEntry> entries = request_table->get_entries(block_paddr);
+            std::vector<RequestTableEntry> entries = request_table->get_entries_no_delete(block_paddr);
             bool firstCachelineAccess = (entries.size() == 0);
             // put the entries back
-            if(!firstCachelineAccess){
-                for (auto entry : entries) {
-                    int itr = entry.itr;
-                    int wid = entry.wid;
-                    request_table->add_entry(itr, block_paddr, wid);
-                } 
+            // if(!firstCachelineAccess){
+            //     for (auto entry : entries) {
+            //         int itr = entry.itr;
+            //         int wid = entry.wid;
+            //         request_table->add_entry(itr, block_paddr, wid);
+            //     } 
+            // }
+            bool inserted;
+            if(my_src_tile != -1){
+                if(my_word_size ==4){
+                    uint32_t data = maa->spd->getData<uint32_t>(my_src_tile, my_i);
+                    inserted = request_table->add_entry(my_i, block_paddr, wid, data);
+                } else {
+                    uint64_t data = maa->spd->getData<uint64_t>(my_src_tile, my_i);
+                    inserted = request_table->add_entry(my_i, block_paddr, wid, data);
+                }
+
+            } else {
+                inserted = request_table->add_entry(my_i, block_paddr, wid);
             }
-            bool inserted = request_table->add_entry(my_i, block_paddr, wid);
+             
             if(firstCachelineAccess && inserted){
+                // num_spd_read_condidx_accesses/my_words_per_cl
                 createReadPacket(block_paddr, num_spd_read_condidx_accesses);
+                // struct Addr_i addr_i = {block_paddr, my_i};
                 my_expected_responses++;
             }
+
+            if(inserted){
+                this->sentmyIQueue.push(my_i);
+            }
+            
 
             num_request_table_cacheline_accesses++;
             
@@ -526,7 +546,7 @@ void IndirectAccessUnit::fillRequestTable(bool &finished, bool &waitForFinish, b
                 (*maa->stats.IND_NumRTFull[my_indirect_id])++;
                 break;
             }
-            updateLatency(num_spd_read_condidx_accesses, num_spd_read_condidx_accesses, 0, num_request_table_cacheline_accesses);
+            // updateLatency(num_spd_read_condidx_accesses, num_spd_read_condidx_accesses, 0, num_request_table_cacheline_accesses);
 
 
 
@@ -622,13 +642,14 @@ void IndirectAccessUnit::executeInstruction() {
 
         // Initialization
         my_virtual_addr = 0;
-        my_received_responses = my_expected_responses = 0;
+        my_received_responses = my_expected_responses = 0; my_processed_count = 0;
         // offset_table->reset();
         // for (int i = 0; i < num_RT_slices[my_RT_config]; i++) {
         //     RT[my_RT_config][i].reset();
         //     my_RT_req_sent[my_RT_config][i] = false;
         // }
         my_i = 0;
+        my_i_count = 0;
         my_max = -1;
         my_SPD_read_finish_tick = curTick();
         my_SPD_write_finish_tick = curTick();
@@ -645,6 +666,9 @@ void IndirectAccessUnit::executeInstruction() {
         my_min_addr = my_instruction->minAddr;
         my_max_addr = my_instruction->maxAddr;
         my_addr_range_id = my_instruction->addrRangeID;
+
+        // clear the queue
+        this->sentmyIQueue = {};
 
         // Setting the state of the instruction and stream unit
         my_instruction->state = Instruction::Status::Service;
@@ -685,7 +709,7 @@ void IndirectAccessUnit::executeInstruction() {
             panic_if(false, "I[%d] %s: unknown state!\n", my_indirect_id, __func__);
         }
         // Row table parallelism = total #sub-banks. Each bank can be inserted once at a cycle
-        // updateLatency(0, num_spd_read_condidx_accesses, 0, 0, 0, 0);
+        updateLatency(0, num_spd_read_condidx_accesses, 0, num_rowtable_accesses);
         if (buildReady) {
             // if (reorder_RT) {
             //     DPRINTF(MAAIndirect, "I[%d] %s: state set to Build for %s!\n", my_indirect_id, __func__, my_instruction->print());
@@ -892,6 +916,45 @@ void IndirectAccessUnit::cacheWritePacketSent(Addr addr) {
     }
 }
 
+
+
+// bool IndirectAccessUnit::process_data(){
+//     if(my_processed_count == my_expected_responses && my_expected_responses != 0){
+//         return true;
+//     } else {
+//         Addr_i addr_i = this->sentAddrQueue.front();
+//         std::vector<RequestTableEntry> entries = request_table->get_entries_no_delete(addr_i.addr);
+//         if(entries.size() == 0){
+//             Tick new_when = maa->getClockEdge(Cycles(1));
+//             EventFunctionWrapper processData_event = new EventFunctionWrapper([this] { process_data(); }, name());
+//             maa->schedule(executeInstructionEvent, new_when);
+//             return true;
+//         } else {
+//             // find the min my_i
+//             int my_i = entries[0].itr;
+//             int wid = entries[0].wid;
+//             for (auto entry : entries) {
+//                 if(my_i < entry.itr){
+//                     my_i = entry.itr;
+//                     wid = entry.wid;
+//                 }
+
+//                 // check if that matvhes with input addr_i pari 
+//                 assert(addr_i.i == my_i);
+
+//                 int num_recv_spd_read_accesses = 0;
+//                 int num_recv_spd_write_accesses = 0;
+//                 int num_recv_rt_accesses = entries.size();
+
+
+
+
+//             }
+//         }
+//     }
+// }
+
+
 bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_block_cached) {
     bool was_request_table_full = request_table->is_full();
     std::vector addr_vec = maa->map_addr(addr);
@@ -934,17 +997,55 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
     for (auto entry : entries) {
         int itr = entry.itr;
         int wid = entry.wid;
+        uint64_t srcData = entry.data;
         DPRINTF(MAAIndirect, "I[%d] %s: itr (%d) wid (%d) matched!\n", my_indirect_id, __func__, itr, wid);
+
+        //****************** going to be wrriten in order *****************************
+        // if (my_dst_tile != -1) {
+        //     if (my_word_size == 4) {
+        //         maa->spd->setData<uint32_t>(my_dst_tile, itr, dataptr_u32_typed[wid]);
+        //         DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %u/%d/%f!\n", my_indirect_id, __func__, my_dst_tile, itr, ((uint32_t *)new_data)[wid], ((int32_t *)new_data)[wid], ((float *)new_data)[wid]);
+        //     } else {
+        //         maa->spd->setData<uint64_t>(my_dst_tile, itr, dataptr_u64_typed[wid]);
+        //         DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %lu/%ld/%lf!\n", my_indirect_id, __func__, my_dst_tile, itr, ((uint64_t *)new_data)[wid], ((int64_t *)new_data)[wid], ((double *)new_data)[wid]);
+        //     }
+        //     num_recv_spd_write_accesses++;
+        // }
+
         if (my_dst_tile != -1) {
             if (my_word_size == 4) {
-                maa->spd->setData<uint32_t>(my_dst_tile, itr, dataptr_u32_typed[wid]);
-                DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %u/%d/%f!\n", my_indirect_id, __func__, my_dst_tile, itr, ((uint32_t *)new_data)[wid], ((int32_t *)new_data)[wid], ((float *)new_data)[wid]);
+                writeBuffer[itr] = dataptr_u32_typed[wid];
+                DPRINTF(MAAIndirect, "I[%d] %s: SPD_noWrite[%d][%d] = %u/%d/%f!\n", my_indirect_id, __func__, my_dst_tile, itr, ((uint32_t *)new_data)[wid], ((int32_t *)new_data)[wid], ((float *)new_data)[wid]);
             } else {
-                maa->spd->setData<uint64_t>(my_dst_tile, itr, dataptr_u64_typed[wid]);
-                DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %lu/%ld/%lf!\n", my_indirect_id, __func__, my_dst_tile, itr, ((uint64_t *)new_data)[wid], ((int64_t *)new_data)[wid], ((double *)new_data)[wid]);
+                writeBuffer[itr] = dataptr_u64_typed[wid];
+                DPRINTF(MAAIndirect, "I[%d] %s: SPD_noWrite[%d][%d] = %lu/%ld/%lf!\n", my_indirect_id, __func__, my_dst_tile, itr, ((uint64_t *)new_data)[wid], ((int64_t *)new_data)[wid], ((double *)new_data)[wid]);
             }
-            num_recv_spd_write_accesses++;
         }
+
+        // sent the data in order
+        if (my_dst_tile != -1) {
+            while(sentmyIQueue.size() > 0 && writeBuffer.find(sentmyIQueue.front()) != writeBuffer.end()){
+                int my_i_queue = sentmyIQueue.front();
+                if (my_word_size == 4) {
+                    uint32_t data_32 = writeBuffer[my_i_queue];
+                    maa->spd->setData<uint32_t>(my_dst_tile, my_i_queue, writeBuffer[my_i_queue]);
+                    DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %u/%d/%f!\n", my_indirect_id, __func__, my_dst_tile, my_i_queue, ((uint32_t *)&data_32)[0], ((int32_t *)&data_32)[0], ((float *)&data_32)[0]);
+
+                } else {
+                    uint64_t data_64 = writeBuffer[my_i_queue];
+                    maa->spd->setData<uint64_t>(my_dst_tile, my_i_queue, writeBuffer[my_i_queue]);
+                    DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %lu/%ld/%lf!\n", my_indirect_id, __func__, my_dst_tile, my_i_queue, ((uint64_t *)&data_64)[0], ((int64_t *)&data_64)[0], ((double *)&data_64)[0]);
+
+                }
+                writeBuffer.erase(my_i_queue);
+                sentmyIQueue.pop();
+                num_recv_spd_write_accesses++;
+            }
+        }
+
+        
+
+        // ******************************************************
         switch (my_instruction->opcode) {
         case Instruction::OpcodeType::INDIR_LD: {
             assert(my_dst_tile != -1);
@@ -952,10 +1053,10 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
         }
         case Instruction::OpcodeType::INDIR_ST_VECTOR: {
             if (my_word_size == 4) {
-                ((uint32_t *)new_data)[wid] = maa->spd->getData<uint32_t>(my_src_tile, itr);
+                ((uint32_t *)new_data)[wid] = castuint64_t<uint32_t> (srcData); //maa->spd->getData<uint32_t>(my_src_tile, itr);
                 DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] = SPD[%d][%d] = %u/%d/%f!\n", my_indirect_id, __func__, wid, my_src_tile, itr, ((uint32_t *)new_data)[wid], ((int32_t *)new_data)[wid], ((float *)new_data)[wid]);
             } else {
-                ((uint64_t *)new_data)[wid] = maa->spd->getData<uint64_t>(my_src_tile, itr);
+                ((uint64_t *)new_data)[wid] = srcData; //maa->spd->getData<uint64_t>(my_src_tile, itr);
                 DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] = SPD[%d][%d] = %lu/%ld/%lf!\n", my_indirect_id, __func__, wid, my_src_tile, itr, ((uint64_t *)new_data)[wid], ((int64_t *)new_data)[wid], ((double *)new_data)[wid]);
             }
             num_recv_spd_read_accesses++;
@@ -972,7 +1073,7 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
         case Instruction::OpcodeType::INDIR_RMW_VECTOR: {
             switch (my_instruction->datatype) {
             case Instruction::DataType::UINT32_TYPE: {
-                uint32_t word_data = maa->spd->getData<uint32_t>(my_src_tile, itr);
+                uint32_t word_data = castuint64_t<uint32_t> (srcData); //maa->spd->getData<uint32_t>( my_src_tile, itr);
                 if (my_instruction->optype == Instruction::OPType::ADD_OP) {
                     DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] (%u) += SPD[%d][%d] (%u) = %u!\n",
                             my_indirect_id, __func__, wid, ((uint32_t *)new_data)[wid], my_src_tile, itr, word_data, ((uint32_t *)new_data)[wid] + word_data);
@@ -987,7 +1088,7 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
                 break;
             }
             case Instruction::DataType::INT32_TYPE: {
-                int32_t word_data = maa->spd->getData<int32_t>(my_src_tile, itr);
+                int32_t word_data = castuint64_t<uint32_t> (srcData); //maa->spd->getData<int32_t>(my_src_tile, itr);
                 if (my_instruction->optype == Instruction::OPType::ADD_OP) {
                     DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] (%d) += SPD[%d][%d] (%d) = %d!\n",
                             my_indirect_id, __func__, wid, ((int32_t *)new_data)[wid], my_src_tile, itr, word_data, ((int32_t *)new_data)[wid] + word_data);
@@ -1002,7 +1103,7 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
                 break;
             }
             case Instruction::DataType::FLOAT32_TYPE: {
-                float word_data = maa->spd->getData<float>(my_src_tile, itr);
+                float word_data = castuint64_t<float> (srcData); //maa->spd->getData<float>(my_src_tile, itr);
                 if (my_instruction->optype == Instruction::OPType::ADD_OP) {
                     DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] (%f) += SPD[%d][%d] (%f) = %f!\n",
                             my_indirect_id, __func__, wid, ((float *)new_data)[wid], my_src_tile, itr, word_data, ((float *)new_data)[wid] + word_data);
@@ -1017,7 +1118,8 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
                 break;
             }
             case Instruction::DataType::UINT64_TYPE: {
-                uint64_t word_data = maa->spd->getData<uint64_t>(my_src_tile, itr);
+                uint64_t word_data = castuint64_t<uint64_t> (srcData);
+                // uint64_t word_data = maa->spd->getData<uint64_t>(my_src_tile, itr);
                 if (my_instruction->optype == Instruction::OPType::ADD_OP) {
                     DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] (%lu) += SPD[%d][%d] (%lu) = %lu!\n",
                             my_indirect_id, __func__, wid, ((uint64_t *)new_data)[wid], my_src_tile, itr, word_data, ((uint64_t *)new_data)[wid] + word_data);
@@ -1032,7 +1134,8 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
                 break;
             }
             case Instruction::DataType::INT64_TYPE: {
-                int64_t word_data = maa->spd->getData<int64_t>(my_src_tile, itr);
+                int64_t word_data = castuint64_t<uint64_t> (srcData);
+                // int64_t word_data = maa->spd->getData<int64_t>(my_src_tile, itr);
                 if (my_instruction->optype == Instruction::OPType::ADD_OP) {
                     DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] (%ld) += SPD[%d][%d] (%ld) = %ld!\n",
                             my_indirect_id, __func__, wid, ((int64_t *)new_data)[wid], my_src_tile, itr, word_data, ((int64_t *)new_data)[wid] + word_data);
@@ -1047,7 +1150,8 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
                 break;
             }
             case Instruction::DataType::FLOAT64_TYPE: {
-                double word_data = maa->spd->getData<double>(my_src_tile, itr);
+                double word_data = castuint64_t<double> (srcData);
+                // double word_data = maa->spd->getData<double>(my_src_tile, itr);
                 if (my_instruction->optype == Instruction::OPType::ADD_OP) {
                     DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] (%lf) += SPD[%d][%d] (%lf) = %lf!\n",
                             my_indirect_id, __func__, wid, ((double *)new_data)[wid], my_src_tile, itr, word_data, ((double *)new_data)[wid] + word_data);

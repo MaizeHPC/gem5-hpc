@@ -274,6 +274,11 @@ void StreamAccessUnit::executeInstruction() {
                         } else {
                             DPRINTF(MAAStream, "S[%d] RequestTable: entry %d added! vaddr=0x%lx, paddr=0x%lx wid = %d\n",
                                     my_stream_id, page_it->curr_idx, block_vaddr, paddr, word_id);
+
+                            // to keep the ids in order
+                            this->sentmyIQueue.push(page_it->curr_idx);
+
+
                         }
                     } else if (my_instruction->opcode == Instruction::OpcodeType::STREAM_LD) {
                         DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %u (cond not taken)\n", my_stream_id, __func__, my_dst_tile, page_it->curr_idx, 0);
@@ -394,13 +399,46 @@ bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr) {
         int wid = entry.wid;
         switch (my_instruction->opcode) {
         case Instruction::OpcodeType::STREAM_LD: {
+
+            /************ going to write data in order *************/
+
+            // if (my_word_size == 4) {
+            //     DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %u\n", my_stream_id, __func__, my_dst_tile, itr, dataptr_u32_typed[wid]);
+            //     maa->spd->setData<uint32_t>(my_dst_tile, itr, dataptr_u32_typed[wid]);
+            // } else {
+            //     DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %lu\n", my_stream_id, __func__, my_dst_tile, itr, dataptr_u64_typed[wid]);
+            //     maa->spd->setData<uint64_t>(my_dst_tile, itr, dataptr_u64_typed[wid]);
+            // }
+
             if (my_word_size == 4) {
                 DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %u\n", my_stream_id, __func__, my_dst_tile, itr, dataptr_u32_typed[wid]);
-                maa->spd->setData<uint32_t>(my_dst_tile, itr, dataptr_u32_typed[wid]);
+                writeBuffer[itr] = dataptr_u32_typed[wid];
             } else {
                 DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %lu\n", my_stream_id, __func__, my_dst_tile, itr, dataptr_u64_typed[wid]);
-                maa->spd->setData<uint64_t>(my_dst_tile, itr, dataptr_u64_typed[wid]);
+                writeBuffer[itr] = dataptr_u64_typed[wid];
             }
+
+            // rewriting the data in order
+            while(sentmyIQueue.size() > 0 && writeBuffer.find(sentmyIQueue.front()) != writeBuffer.end()){
+                int my_i_queue = sentmyIQueue.front();
+                if (my_word_size == 4) {
+                    uint32_t data_32 = writeBuffer[my_i_queue];
+                    maa->spd->setData<uint32_t>(my_dst_tile, my_i_queue, writeBuffer[my_i_queue]);
+                    DPRINTF(MAAStream, "I[%d] %s: SPD[%d][%d] = %u/%d/%f!\n", my_stream_id, __func__, my_dst_tile, my_i_queue, ((uint32_t *)&data_32)[0], ((int32_t *)&data_32)[0], ((float *)&data_32)[0]);
+
+                } else {
+                    uint64_t data_64 = writeBuffer[my_i_queue];
+                    maa->spd->setData<uint64_t>(my_dst_tile, my_i_queue, writeBuffer[my_i_queue]);
+                    DPRINTF(MAAStream, "I[%d] %s: SPD[%d][%d] = %lu/%ld/%lf!\n", my_stream_id, __func__, my_dst_tile, my_i_queue, ((uint64_t *)&data_64)[0], ((int64_t *)&data_64)[0], ((double *)&data_64)[0]);
+
+                }
+                writeBuffer.erase(my_i_queue);
+                sentmyIQueue.pop();
+
+            }
+
+
+            /********************************/
             break;
         }
         case Instruction::OpcodeType::STREAM_ST: {

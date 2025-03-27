@@ -43,6 +43,9 @@ protected:
     const int num_read_ports, num_write_ports;
     MAA *maa;
 
+    uint32_t* tile_rd_ptrs;
+    uint32_t* tile_wr_ptrs;
+
 public:
     void check_tile_id(int tile_id, int word_size) {
         panic_if(tile_id < 0 || tile_id >= num_tiles, "Invalid tile_id: %d\n", tile_id);

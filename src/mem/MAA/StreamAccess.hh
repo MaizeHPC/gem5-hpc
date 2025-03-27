@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <queue>
+#include <map>
 
 #include "base/types.hh"
 #include "mem/packet.hh"
@@ -73,6 +75,9 @@ protected:
     Status state;
     RequestTable *request_table;
     int dst_tile_id;
+
+    std::queue<int> sentmyIQueue;
+    std::map<int, uint64_t> writeBuffer;
 
 public:
     StreamAccessUnit();
