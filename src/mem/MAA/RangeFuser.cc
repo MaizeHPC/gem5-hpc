@@ -89,6 +89,15 @@ void RangeFuserUnit::executeInstruction() {
         my_last_i = maa->rf->getData<int>(my_instruction->dst1RegID);
         my_last_j = maa->rf->getData<int>(my_instruction->dst2RegID);
         my_stride = maa->rf->getData<int>(my_instruction->src1RegID);
+
+        // if(my_dst_i_tile != -1){
+        //     maa->spd->SPDQueues[my_dst_i_tile] = {};
+        // }
+
+        // if(my_dst_j_tile != -1){
+        //     maa->spd->SPDQueues[my_dst_j_tile] = {};
+        // }
+
         my_max_i = -1;
         my_idx_j = 0;
         DPRINTF(MAARangeFuser, "R[%d] %s: my_last_i: %d, my_last_j: %d, my_stride: %d\n",
@@ -200,6 +209,8 @@ void RangeFuserUnit::executeInstruction() {
                 for (; my_last_j < my_max_j && my_idx_j < num_tile_elements; my_last_j += my_stride, my_idx_j++) {
                     maa->spd->setData(my_dst_i_tile, my_idx_j, my_last_i);
                     maa->spd->setData(my_dst_j_tile, my_idx_j, my_last_j);
+                    maa->spd->SPDQueues[my_dst_i_tile].push(my_last_i);
+                    maa->spd->SPDQueues[my_dst_j_tile].push(my_last_j);
                     num_spd_write_accesses++;
                     DPRINTF(MAARangeFuser, "R[%d] %s: [%d-%d-%d][%d-%d-%d] inserted!\n", my_range_id, __func__, 0, my_last_i, my_max_i, my_min_j, my_last_j, my_max_j);
                 }

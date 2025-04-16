@@ -144,7 +144,20 @@ void StreamAccessUnit::executeInstruction() {
         my_min = maa->rf->getData<int>(my_instruction->src1RegID);
         my_max = maa->rf->getData<int>(my_instruction->src2RegID);
         my_stride = maa->rf->getData<int>(my_instruction->src3RegID);
+
+        // if(my_dst_tile != -1){
+        //     maa->spd->SPDQueues[my_dst_tile] = {};
+        // }
+
+        
+
         my_size = (my_max == my_min) ? 0 : std::min((int)(maa->num_tile_elements), ((int)((my_max - my_min - 1) / my_stride)) + 1);
+
+        for(int i = 0; i < my_size; i++){
+            sentmyIQueue.push(i);
+        }
+
+
         DPRINTF(MAAStream, "S[%d] %s: min: %d, max: %d, stride: %d, size: %d!\n", my_stream_id, __func__, my_min, my_max, my_stride, my_size);
         if (my_instruction->opcode == Instruction::OpcodeType::STREAM_LD) {
             my_word_size = my_instruction->getWordSize(my_dst_tile);
@@ -276,7 +289,7 @@ void StreamAccessUnit::executeInstruction() {
                                     my_stream_id, page_it->curr_idx, block_vaddr, paddr, word_id);
 
                             // to keep the ids in order
-                            this->sentmyIQueue.push(page_it->curr_idx);
+                            
 
 
                         }
@@ -424,11 +437,13 @@ bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr) {
                 if (my_word_size == 4) {
                     uint32_t data_32 = writeBuffer[my_i_queue];
                     maa->spd->setData<uint32_t>(my_dst_tile, my_i_queue, writeBuffer[my_i_queue]);
+                    maa->spd->SPDQueues[my_dst_tile].push(data_32);
                     DPRINTF(MAAStream, "I[%d] %s: SPD[%d][%d] = %u/%d/%f!\n", my_stream_id, __func__, my_dst_tile, my_i_queue, ((uint32_t *)&data_32)[0], ((int32_t *)&data_32)[0], ((float *)&data_32)[0]);
 
                 } else {
                     uint64_t data_64 = writeBuffer[my_i_queue];
                     maa->spd->setData<uint64_t>(my_dst_tile, my_i_queue, writeBuffer[my_i_queue]);
+                    maa->spd->SPDQueues[my_dst_tile].push(data_64);
                     DPRINTF(MAAStream, "I[%d] %s: SPD[%d][%d] = %lu/%ld/%lf!\n", my_stream_id, __func__, my_dst_tile, my_i_queue, ((uint64_t *)&data_64)[0], ((int64_t *)&data_64)[0], ((double *)&data_64)[0]);
 
                 }

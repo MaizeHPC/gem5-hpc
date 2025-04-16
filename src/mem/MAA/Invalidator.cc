@@ -423,6 +423,7 @@ bool Invalidator::recvData(int tile_id, int element_id, uint8_t *dataptr) {
     uint32_t *dataptr_u32_typed = (uint32_t *)dataptr;
     for (int i = 0; i < 16; i++) {
         maa->spd->setData<uint32_t>(tile_id, element_id + i, dataptr_u32_typed[i]);
+        // maa->spd->SPDQueues[tile_id].push(dataptr_u32_typed[i]);
     }
     if (state == Status::Response && my_received_responses == my_total_invalidations_sent) {
         DPRINTF(MAAInvalidator, "%s: all words received, calling execution again!\n", __func__);

@@ -196,6 +196,16 @@ void SPD::setSize(int tile_id, uint16_t size) {
     assert((0 <= tile_id) && (tile_id < num_tiles));
     tiles_size[tile_id] = size;
 }
+
+void SPD::resetQueue(int tile_id){
+    while(!SPDQueues[tile_id].empty()){
+        SPDQueues[tile_id].pop();
+    }
+    queue_rd_ptrs[tile_id] = 0;
+}
+
+
+
 SPD::SPD(MAA *_maa,
          unsigned int _num_tiles,
          unsigned int _num_tile_elements,
@@ -239,13 +249,18 @@ SPD::SPD(MAA *_maa,
     }
 
     // to support Queue based implementation 
-    tile_rd_ptrs = new uint32_t[num_tiles];
-    tile_wr_ptrs = new uint32_t[num_tiles];
-
-    for(int i = 0; i < num_tiles; i++){
-        tile_rd_ptrs[i] = 0;
-        tile_wr_ptrs[i] = 0;
+    SPDQueues.resize(num_tiles);
+    queue_rd_ptrs = new uint32_t[num_tiles];
+    for(int i = 0; i <  num_tiles; i++){
+        queue_rd_ptrs[i] = 0;
     }
+    // tile_rd_ptrs = new uint32_t[num_tiles];
+    // tile_wr_ptrs = new uint32_t[num_tiles];
+
+    // for(int i = 0; i < num_tiles; i++){
+    //     tile_rd_ptrs[i] = 0;
+    //     tile_wr_ptrs[i] = 0;
+    // }
 
 }
 SPD::~SPD() {
@@ -261,10 +276,9 @@ SPD::~SPD() {
     delete[] write_port_busy_until;
     assert(element_finished != nullptr);
     delete[] element_finished;
-    assert(tile_rd_ptrs != nullptr);
-    delete[] tile_rd_ptrs;
-    assert(tile_wr_ptrs != nullptr);
-    delete[] tile_wr_ptrs;
+    assert(queue_rd_ptrs != nullptr);
+    delete[] queue_rd_ptrs;
+
 }
 
 ///////////////

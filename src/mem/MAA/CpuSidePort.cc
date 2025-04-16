@@ -94,7 +94,10 @@ void MAA::recvTimingReq(PacketPtr pkt, int core_id) {
                 uint32_t data = pkt->getPtr<uint32_t>()[i];
                 DPRINTF(MAACpuPort, "%s: TILE[%d][%d] = %u\n", __func__, tile_id, element_id + i, data);
                 spd->setData<uint32_t>(tile_id, element_id + i, data);
+                // writeBuffer[element_id + i]  = data;
             }
+
+
             assert(pkt->needsResponse() == false);
             pendingDelete.reset(pkt);
             break;
@@ -262,6 +265,28 @@ void MAA::recvTimingReq(PacketPtr pkt, int core_id) {
             }
             break;
         }
+
+        case AddressRangeType::Type::CACHE_TILE_RANGE: {
+            Addr offset = address_range.getOffset();
+            int element_id = offset/sizeof(uint64_t);
+            if(element_id == 0){
+                CacheTiles_address = pkt->getPtr<uint64_t>()[0];
+                std::cout << "Received cache tile address is: " << CacheTiles_address << "\n";
+            } else if(element_id == 1){
+                CacheTiles_rangeID = pkt->getPtr<uint64_t>()[0];
+                std::cout << "Received cache tile id range is: " << CacheTiles_rangeID << "\n";
+            }
+            pkt->makeTimingResponse();
+            // Here we reset the timing of the packet.
+            Tick old_header_delay = pkt->headerDelay;
+            pkt->headerDelay = pkt->payloadDelay = 0;
+            cpuSidePorts[core_id]->schedTimingResp(pkt, getClockEdge(Cycles(1)) + old_header_delay);
+            
+            break;
+        }
+
+
+
         default:
             // Write to SPD_DATA_CACHEABLE_RANGE not possible. All SPD writes must be to SPD_DATA_NONCACHEABLE_RANGE
             // Write to SPD_SIZE_RANGE not possible. Size is read-only.

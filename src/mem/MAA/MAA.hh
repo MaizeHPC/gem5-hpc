@@ -7,6 +7,7 @@
 #include <memory>
 #include <queue>
 #include <string>
+#include <map>
 
 #include "base/trace.hh"
 #include "base/types.hh"
@@ -276,6 +277,8 @@ public:
     ALUUnit *aluUnits;
     RangeFuserUnit *rangeUnits;
 
+    std::map<int, uint64_t> writeBuffer;
+
     // Ramulator related variables for address mapping
     std::vector<int> m_org;
     std::vector<int> m_addr_bits; // How many address bits for each level in the hierarchy?
@@ -403,6 +406,9 @@ public:
     unsigned int num_maas;
     unsigned int num_cores_per_maas;
     unsigned int m_core_addr_bits;
+
+    Addr CacheTiles_address;
+    int CacheTiles_rangeID;
 
     Cycles rowtable_latency;
     RequestorID requestorId;

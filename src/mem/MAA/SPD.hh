@@ -4,10 +4,14 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <queue>
+#include <vector>
+
 #include "base/logging.hh"
 #include "base/trace.hh"
 #include "base/types.hh"
 #include "debug/SPD.hh"
+
 
 namespace gem5 {
 class MAA;
@@ -26,6 +30,9 @@ public:
         "Finished",
         "MAX"};
 
+    std::vector< std::queue<uint64_t> > SPDQueues;
+    uint32_t* queue_rd_ptrs;
+
 protected:
     uint8_t *tiles_data;
     TileStatus *tiles_status;
@@ -43,8 +50,7 @@ protected:
     const int num_read_ports, num_write_ports;
     MAA *maa;
 
-    uint32_t* tile_rd_ptrs;
-    uint32_t* tile_wr_ptrs;
+    
 
 public:
     void check_tile_id(int tile_id, int word_size) {
@@ -95,6 +101,25 @@ public:
     bool getTileReady(int tile_id);
     uint16_t getSize(int tile_id);
     void setSize(int tile_id, uint16_t size);
+
+    void resetQueue(int tile_id);
+    // template <typename T>
+    //     void fillQueue(int tile_id){
+    //         // SPDQueues[tile_id].push(getData<T>(tile_id, my_i));
+    //         if(queue_rd_ptrs[tile_id] < num_tile_elements){
+    //             int tile_element_id = tile_id * num_tile_elements + queue_rd_ptrs[tile_id] * sizeof(T) / 4;
+    //             bool is_element_finished = element_finished[tile_element_id];
+    //             if(!is_element_finished){
+    //                 // break;
+    //             } else {
+                    
+    //                 SPDQueues[tile_id].push(getData<T>(tile_id, queue_rd_ptrs[tile_id]));
+    //                 std::cout << "global: pushed data: " << getData<T>(tile_id, queue_rd_ptrs[tile_id]) << " id: " << queue_rd_ptrs[tile_id] << "\n";
+    //                 queue_rd_ptrs[tile_id]++;
+    //             }
+    //         }
+    //     }
+
 
 public:
     SPD(MAA *_maa,

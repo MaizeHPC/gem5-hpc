@@ -90,6 +90,11 @@ void ALUUnit::executeInstruction() {
         my_cond_tile = my_instruction->condSpdID;
         my_src1_tile = my_instruction->src1SpdID;
         my_src2_tile = my_instruction->src2SpdID;
+
+        // if(my_dst_tile != -1){
+        //     maa->spd->SPDQueues[my_dst_tile] = {};
+        // }
+        
         my_max = -1;
         my_i = 0;
         my_input_word_size = my_instruction->getWordSize(my_src1_tile);
@@ -338,6 +343,7 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32_compare;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32_compare);
+                            maa->spd->SPDQueues[my_dst_tile].push(result_u32_compare);
                             num_spd_write_accesses++;
                         }
                         (*maa->stats.ALU_NumComparedWords[my_alu_id])++;
@@ -349,6 +355,7 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32_compute;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32_compute);
+                            maa->spd->SPDQueues[my_dst_tile].push(result_u32_compute);
                             num_spd_write_accesses++;
                         }
                     }
@@ -429,6 +436,7 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32);
+                            maa->spd->SPDQueues[my_dst_tile].push(result_u32);
                             num_spd_write_accesses++;
                         }
                         (*maa->stats.ALU_NumComparedWords[my_alu_id])++;
@@ -440,6 +448,7 @@ void ALUUnit::executeInstruction() {
                             my_red_i32 = result_i32;
                         } else {
                             maa->spd->setData<int32_t>(my_dst_tile, my_i, result_i32);
+                            maa->spd->SPDQueues[my_dst_tile].push(result_i32);
                             num_spd_write_accesses++;
                         }
                     }
@@ -505,6 +514,7 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32);
+                            maa->spd->SPDQueues[my_dst_tile].push(result_u32);
                             num_spd_write_accesses++;
                         }
                         (*maa->stats.ALU_NumComparedWords[my_alu_id])++;
@@ -516,6 +526,7 @@ void ALUUnit::executeInstruction() {
                             my_red_f32 = result_f32;
                         } else {
                             maa->spd->setData<float>(my_dst_tile, my_i, result_f32);
+                            maa->spd->SPDQueues[my_dst_tile].push(result_f32);
                             num_spd_write_accesses++;
                         }
                     }
@@ -596,6 +607,7 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32);
+                            maa->spd->SPDQueues[my_dst_tile].push(result_u32);
                             num_spd_write_accesses++;
                         }
                         (*maa->stats.ALU_NumComparedWords[my_alu_id])++;
@@ -607,6 +619,7 @@ void ALUUnit::executeInstruction() {
                             my_red_u64 = result_u64;
                         } else {
                             maa->spd->setData<uint64_t>(my_dst_tile, my_i, result_u64);
+                            maa->spd->SPDQueues[my_dst_tile].push(result_u64);
                             num_spd_write_accesses++;
                         }
                     }
@@ -687,6 +700,7 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32);
+                            maa->spd->SPDQueues[my_dst_tile].push(result_u32);
                             num_spd_write_accesses++;
                         }
                         (*maa->stats.ALU_NumComparedWords[my_alu_id])++;
@@ -698,6 +712,7 @@ void ALUUnit::executeInstruction() {
                             my_red_i64 = result_i64;
                         } else {
                             maa->spd->setData<uint64_t>(my_dst_tile, my_i, result_i64);
+                            maa->spd->SPDQueues[my_dst_tile].push(result_i64);
                             num_spd_write_accesses++;
                         }
                     }
@@ -763,6 +778,7 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32);
+                            maa->spd->SPDQueues[my_dst_tile].push(result_u32);
                             num_spd_write_accesses++;
                         }
                         (*maa->stats.ALU_NumComparedWords[my_alu_id])++;
@@ -774,6 +790,7 @@ void ALUUnit::executeInstruction() {
                             my_red_f64 = result_f64;
                         } else {
                             maa->spd->setData<double>(my_dst_tile, my_i, result_f64);
+                            maa->spd->SPDQueues[my_dst_tile].push(result_f64);
                             num_spd_write_accesses++;
                         }
                     }
@@ -790,30 +807,37 @@ void ALUUnit::executeInstruction() {
                     my_instruction->optype == Instruction::OPType::LTE_OP ||
                     my_instruction->optype == Instruction::OPType::EQ_OP) {
                     maa->spd->setData<uint32_t>(my_dst_tile, my_i, 0);
+                    maa->spd->SPDQueues[my_dst_tile].push(0);
                 } else {
                     switch (my_instruction->datatype) {
                     case Instruction::DataType::UINT32_TYPE: {
                         maa->spd->setData<uint32_t>(my_dst_tile, my_i, 0);
+                        maa->spd->SPDQueues[my_dst_tile].push(0);
                         break;
                     }
                     case Instruction::DataType::INT32_TYPE: {
                         maa->spd->setData<int32_t>(my_dst_tile, my_i, 0);
+                        maa->spd->SPDQueues[my_dst_tile].push(0);
                         break;
                     }
                     case Instruction::DataType::FLOAT32_TYPE: {
                         maa->spd->setData<float>(my_dst_tile, my_i, 0);
+                        maa->spd->SPDQueues[my_dst_tile].push(0);
                         break;
                     }
                     case Instruction::DataType::UINT64_TYPE: {
                         maa->spd->setData<uint64_t>(my_dst_tile, my_i, 0);
+                        maa->spd->SPDQueues[my_dst_tile].push(0);
                         break;
                     }
                     case Instruction::DataType::INT64_TYPE: {
                         maa->spd->setData<int64_t>(my_dst_tile, my_i, 0);
+                        maa->spd->SPDQueues[my_dst_tile].push(0);
                         break;
                     }
                     case Instruction::DataType::FLOAT64_TYPE: {
                         maa->spd->setData<double>(my_dst_tile, my_i, 0);
+                        maa->spd->SPDQueues[my_dst_tile].push(0);
                         break;
                     }
                     default:

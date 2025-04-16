@@ -91,6 +91,11 @@ protected:
 
     std::queue<int> sentmyIQueue;
     std::map<int, uint64_t> writeBuffer;
+    std::map<Addr, bool> ReadExTile_CAM;
+    int last_blk_tileWrite;
+    uint8_t TileWriteData[64];
+    bool CacheTileWrite;
+    int CacheTileWriteCount;
 
     // Modified --- Vasan 
 
@@ -178,7 +183,7 @@ protected:
     std::set<Addr> my_unique_CL_addrs;
     std::set<Addr> my_unique_ROW_addrs;
 
-    Addr translatePacket(Addr vaddr);
+    Addr translatePacket(Addr vaddr, bool is_load);
     // bool checkAndResetAllRowTablesSent();
     // int getRowTableIdx(int RT_config, int channel, int rank, int bankgroup, int bank);
     // Addr getGrowAddr(int RT_config, int bankgroup, int bank, int row);

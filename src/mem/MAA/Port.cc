@@ -100,7 +100,7 @@ void MAA::sendPacket(FuncUnitType funcUnit, uint8_t maaID, PacketPtr pkt, Tick t
         }
     } else {
         my_outstanding_pkt_map[paddr] = OutstandingPacket(pkt, paddr, tick, pkt->cmd);
-        my_outstanding_pkt_map[paddr].cached = true;
+        my_outstanding_pkt_map[paddr].cached = force_cache;
         if (force_cache_access == false && force_cache == false) {
             RequestPtr snoop_req = std::make_shared<Request>(pkt->req->getPaddr(), pkt->req->getSize(), pkt->req->getFlags(), pkt->req->requestorId());
             PacketPtr snoop_pkt = new Packet(snoop_req, MemCmd::SnoopReq);

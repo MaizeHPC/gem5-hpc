@@ -210,6 +210,14 @@ bool IF::pushInstruction(Instruction _instruction) {
                     return false;
                 }
             }
+            
+            if ((_instruction.accessType == Instruction::AccessType::WRITE) &&
+                (instructions[maa_id][i].accessType != Instruction::AccessType::COMPUTE) &&
+                (_instruction.addrRangeID == instructions[maa_id][i].addrRangeID)) {
+                DPRINTF(MAAController, "%s: %s cannot be pushed b/c of %s!\n", __func__, _instruction.print(), instructions[maa_id][i].print());
+                return false;
+            }
+
         }
     }
     if (free_instruction_slot == -1) {
@@ -452,12 +460,13 @@ std::string AddressRangeType::print() const {
     ccprintf(str, "%s: 0x%lx + 0x%lx", address_range_names[rangeID], base, offset);
     return str.str();
 }
-const char *const AddressRangeType::address_range_names[7] = {
+const char *const AddressRangeType::address_range_names[8] = {
     "SPD_DATA_CACHEABLE_RANGE",
     "SPD_DATA_NONCACHEABLE_RANGE",
     "SPD_SIZE_RANGE",
     "SPD_READY_RANGE",
     "SCALAR_RANGE",
     "INSTRUCTION_RANGE",
+    "CACHE_TILE_RANGE"
     "MAX"};
 } // namespace gem5

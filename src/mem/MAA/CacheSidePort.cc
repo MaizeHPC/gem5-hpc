@@ -29,7 +29,7 @@ namespace gem5 {
 
 bool MAA::CacheSidePort::recvTimingResp(PacketPtr pkt) {
     /// print the packet
-    DPRINTF(MAACachePort, "%s: received %s\n", __func__, pkt->print());
+    DPRINTF(MAACachePort, "%s: received %s, outstandingCacheSidePackets: %d \n", __func__, pkt->print(), outstandingCacheSidePackets);
     maa->recvTimingResp(pkt, true);
     outstandingCacheSidePackets--;
     if (blockReason == BlockReason::MAX_XBAR_PACKETS) {

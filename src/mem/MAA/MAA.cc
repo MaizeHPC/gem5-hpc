@@ -176,6 +176,10 @@ MAA::MAA(const MAAParams &p)
         my_num_outstanding_indirect_pkts[i] = 0;
         my_num_outstanding_stream_pkts[i] = 0;
     }
+
+    // Cache based Tiles
+    CacheTiles_address = 0;
+    CacheTiles_rangeID = -1;
 }
 
 void MAA::init() {
