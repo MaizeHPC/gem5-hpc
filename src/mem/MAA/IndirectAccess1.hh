@@ -16,12 +16,15 @@
 #include "sim/system.hh"
 #include "arch/generic/mmu.hh"
 #include "mem/MAA/Tables.hh"
+#include "mem/MAA/TileWrite.hh"
 
 namespace gem5 {
 
 class MAA;
 class IndirectAccessUnit;
 class Instruction;
+
+
 
 class IndirectAccessUnit : public BaseMMU::Translation {
 public:
@@ -95,9 +98,10 @@ protected:
     int last_blk_tileWrite;
     uint8_t TileWriteData[64];
     bool CacheTileWrite;
-    int CacheTileWriteCount;
+    uint32_t CacheTileWriteCount;
 
     // Modified --- Vasan 
+    TileWrite* tilewriteunit;
 
 
 public:
@@ -127,6 +131,7 @@ public:
     void cacheWritePacketSent(Addr addr);
     void cacheReadPacketSent(Addr addr);
 
+    void recv_updateTimeHistory(const Addr addr, bool is_block_cached);
     bool recvData(const Addr addr, uint8_t *dataptr, bool is_block_cached);
     bool process_data();
     bool process_data(uint32_t i);

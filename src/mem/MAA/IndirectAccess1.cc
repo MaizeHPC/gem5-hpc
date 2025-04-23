@@ -10,9 +10,12 @@
 #include "debug/MAATrace.hh"
 #include "mem/packet.hh"
 #include "sim/cur_tick.hh"
+
+
 #include <cassert>
 #include <cstdint>
 #include <string>
+
 
 #ifndef TRACING_ON
 #define TRACING_ON 1
@@ -43,6 +46,10 @@ IndirectAccessUnit::IndirectAccessUnit()
     my_instruction = nullptr;
 }
 IndirectAccessUnit::~IndirectAccessUnit() {
+
+    assert(tilewriteunit != nullptr);
+    delete [] tilewriteunit;
+
     // assert(RT_slice_org != nullptr);
     // for (int i = 0; i < num_RT_configs; i++) {
     //     assert(RT_slice_org[i] != nullptr);
@@ -111,6 +118,9 @@ void IndirectAccessUnit::allocate(int _my_indirect_id,
     num_request_table_addresses = _num_request_table_addresses;
     num_request_table_entries_per_address = _num_request_table_entries_per_address;
     request_table = new RequestTable(maa, num_request_table_addresses, num_request_table_entries_per_address, my_indirect_id, true);
+
+
+    tilewriteunit = new TileWrite(maa, my_expected_responses, my_received_responses, my_max);
     // offset_table = new OffsetTable();
     // offset_table->allocate(my_indirect_id, num_tile_elements, maa, false);
 
@@ -560,8 +570,6 @@ void IndirectAccessUnit::fillRequestTable(bool &finished, bool &waitForFinish, b
             //     readex_pkt->allocate();
             //     maa->sendPacket(FuncUnitType::INDIRECT, my_indirect_id, readex_pkt, maa->getClockEdge(Cycles(num_spd_read_condidx_accesses)), true);
             //     DPRINTF(MAAIndirect, "I[%d] %s: created %s for mem\n", my_indirect_id, __func__, readex_pkt->print());
-
-
             // }
             
 
@@ -716,6 +724,14 @@ void IndirectAccessUnit::executeInstruction() {
         // Setting the state of the instruction and stream unit
         my_instruction->state = Instruction::Status::Service;
         DPRINTF(MAAIndirect, "I[%d] %s: state set to Fill for request %s!\n", my_indirect_id, __func__, my_instruction->print());
+
+        // 
+        if(my_dst_tile != -1){
+            tilewriteunit->set(my_dst_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size, my_max);
+            int num_initial_reqs = 100;
+            tilewriteunit->createAndSendTileExReads(num_initial_reqs);
+        }
+
         state = Status::Fill;
         [[fallthrough]];
     }
@@ -937,7 +953,7 @@ void IndirectAccessUnit::memReadPacketSent(Addr addr) {
 }
 void IndirectAccessUnit::memWritePacketSent(Addr addr) {
     DPRINTF(MAAIndirect, "I[%d] %s: mem write packet 0x%lx sent\n", my_indirect_id, __func__, addr);
-    my_received_responses++;
+    // my_received_responses++;
     int offset_cache_tile_write = CacheTileWrite ? CacheTileWriteCount : 0;
     if (maa->allIndirectPacketsSent(my_indirect_id) && (my_received_responses == my_expected_responses + offset_cache_tile_write)) {
         DPRINTF(MAAIndirect, "I[%d] %s: all responses received, calling execution again in state %s!\n", my_indirect_id, __func__, status_names[(int)state]);
@@ -953,7 +969,7 @@ void IndirectAccessUnit::cacheReadPacketSent(Addr addr) {
 }
 void IndirectAccessUnit::cacheWritePacketSent(Addr addr) {
     DPRINTF(MAAIndirect, "I[%d] %s: cache write packet 0x%lx sent\n", my_indirect_id, __func__, addr);
-    my_received_responses++;
+    // my_received_responses++;
     int offset_cache_tile_write = CacheTileWrite ? CacheTileWriteCount : 0;
     if (maa->allIndirectPacketsSent(my_indirect_id) && (my_received_responses == my_expected_responses + offset_cache_tile_write)) {
         DPRINTF(MAAIndirect, "I[%d] %s: all responses received, calling execution again in state %s!\n", my_indirect_id, __func__, status_names[(int)state]);
@@ -964,22 +980,7 @@ void IndirectAccessUnit::cacheWritePacketSent(Addr addr) {
 }
 
 
-
-
-bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_block_cached) {
-
-    bool was_request_table_full = request_table->is_full();
-    std::vector addr_vec = maa->map_addr(addr);
-    // int RT_idx = getRowTableIdx(my_RT_config, addr_vec[ADDR_CHANNEL_LEVEL], addr_vec[ADDR_RANK_LEVEL], addr_vec[ADDR_BANKGROUP_LEVEL], addr_vec[ADDR_BANK_LEVEL]);
-    // Addr grow_addr = getGrowAddr(my_RT_config, addr_vec[ADDR_BANKGROUP_LEVEL], addr_vec[ADDR_BANK_LEVEL], addr_vec[ADDR_ROW_LEVEL]);
-    // bool was_full = false;
-    // if (RT_idx == my_RT_idx)
-    //     was_full = RT[my_RT_config][RT_idx].is_full();
-    std::vector<RequestTableEntry> entries = request_table->get_entries(addr);
-    // bool is_full = false;
-    // if (RT_idx == my_RT_idx)
-    //     is_full = RT[my_RT_config][RT_idx].is_full();
-    // DPRINTF(MAAIndirect, "I[%d] %s: %d entries received for addr(0x%lx), grow(x%lx) from T[%d]!\n", my_indirect_id, __func__, entries.size(), addr, grow_addr, RT_idx);
+void IndirectAccessUnit::recv_updateTimeHistory(const Addr addr, bool is_block_cached){
     if (is_block_cached) {
         if (LoadsCacheHitRespondingTimeHistory.find(addr) != LoadsCacheHitRespondingTimeHistory.end()) {
             (*maa->stats.IND_LoadsCacheHitRespondingLatency[my_indirect_id]) += maa->getTicksToCycles(curTick() - LoadsCacheHitRespondingTimeHistory[addr]);
@@ -995,9 +996,39 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
         (*maa->stats.IND_LoadsMemAccessingLatency[my_indirect_id]) += maa->getTicksToCycles(curTick() - LoadsMemAccessingTimeHistory[addr]);
         LoadsMemAccessingTimeHistory.erase(addr);
     }
+}
+
+bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_block_cached) {
+
+    bool was_request_table_full = request_table->is_full();
+    std::vector addr_vec = maa->map_addr(addr);
+    // int RT_idx = getRowTableIdx(my_RT_config, addr_vec[ADDR_CHANNEL_LEVEL], addr_vec[ADDR_RANK_LEVEL], addr_vec[ADDR_BANKGROUP_LEVEL], addr_vec[ADDR_BANK_LEVEL]);
+    // Addr grow_addr = getGrowAddr(my_RT_config, addr_vec[ADDR_BANKGROUP_LEVEL], addr_vec[ADDR_BANK_LEVEL], addr_vec[ADDR_ROW_LEVEL]);
+    // bool was_full = false;
+    // if (RT_idx == my_RT_idx)
+    //     was_full = RT[my_RT_config][RT_idx].is_full();
+    std::vector<RequestTableEntry> entries = request_table->get_entries(addr);
+
+    if(tilewriteunit->recv_data_indirectunit(addr, dataptr, is_block_cached)){
+        scheduleNextExecution(true);
+        return true;
+    }
+    // bool is_full = false;
+    // if (RT_idx == my_RT_idx)
+    //     is_full = RT[my_RT_config][RT_idx].is_full();
+    // DPRINTF(MAAIndirect, "I[%d] %s: %d entries received for addr(0x%lx), grow(x%lx) from T[%d]!\n", my_indirect_id, __func__, entries.size(), addr, grow_addr, RT_idx);
+   
+    recv_updateTimeHistory(addr, is_block_cached);
+
 
     // if(ReadExTile_CAM[addr] == true){
     //     // this is for tile read exclusive
+    //     ReadExTile_CAM.erase(addr);
+    //     // my_received_responses++;
+    //     // if (maa->allIndirectPacketsSent(my_indirect_id) && my_received_responses == my_expected_responses ) {
+    //     //     DPRINTF(MAAIndirect, "I[%d] %s: all responses received, calling execution again!\n", my_indirect_id, __func__);
+    //     //     scheduleNextExecution(true);
+    //     // }
     //     return true;
     // }
 
@@ -1035,109 +1066,115 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
         if (my_dst_tile != -1) {
             if (my_word_size == 4) {
                 writeBuffer[itr] = dataptr_u32_typed[wid];
+                tilewriteunit->setdata(dataptr_u32_typed[wid], itr);
+                maa->spd->setData<uint32_t>(my_dst_tile, itr, dataptr_u32_typed[wid]);
                 DPRINTF(MAAIndirect, "I[%d] %s: SPD_noWrite[%d][%d] = %u/%d/%f!\n", my_indirect_id, __func__, my_dst_tile, itr, ((uint32_t *)new_data)[wid], ((int32_t *)new_data)[wid], ((float *)new_data)[wid]);
             } else {
                 writeBuffer[itr] = dataptr_u64_typed[wid];
+                tilewriteunit->setdata(dataptr_u64_typed[wid], itr);
+                maa->spd->setData<uint32_t>(my_dst_tile, itr, dataptr_u64_typed[wid]);
                 DPRINTF(MAAIndirect, "I[%d] %s: SPD_noWrite[%d][%d] = %lu/%ld/%lf!\n", my_indirect_id, __func__, my_dst_tile, itr, ((uint64_t *)new_data)[wid], ((int64_t *)new_data)[wid], ((double *)new_data)[wid]);
             }
         }
 
-        // sent the data in order
-        const int words_per_cacheline = block_size/my_word_size;
-        int BufferAccessCount = 0;
-        if (my_dst_tile != -1) {
-            while(sentmyIQueue.size() > 0 && writeBuffer.find(sentmyIQueue.front()) != writeBuffer.end()){
-                int my_i_queue = sentmyIQueue.front();
-                std::cout << "my_i_queue: " << my_i_queue << "\n";
-                // DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %u/%d/%f!\n", my_indirect_id, __func__, my_dst_tile, my_i_queue, ((uint32_t *)&data_32)[0], ((int32_t *)&data_32)[0], ((float *)&data_32)[0]);
-                assert(my_i_queue >=0 && my_i_queue < num_tile_elements);
-                uint32_t data_32 = 0;
-                uint64_t data_64 = 0;
-                BufferAccessCount++;
-                if (my_word_size == 4) {
-                    data_32 = writeBuffer[my_i_queue];
-                    maa->spd->setData<uint32_t>(my_dst_tile, my_i_queue, writeBuffer[my_i_queue]);
+        // // sent the data in order
+        // const int words_per_cacheline = block_size/my_word_size;
+        // int BufferAccessCount = 0;
+        // if (my_dst_tile != -1) {
+        //     while(sentmyIQueue.size() > 0 && writeBuffer.find(sentmyIQueue.front()) != writeBuffer.end()){
+        //         int my_i_queue = sentmyIQueue.front();
+        //         std::cout << "my_i_queue: " << my_i_queue << "\n";
+        //         // DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %u/%d/%f!\n", my_indirect_id, __func__, my_dst_tile, my_i_queue, ((uint32_t *)&data_32)[0], ((int32_t *)&data_32)[0], ((float *)&data_32)[0]);
+        //         assert(my_i_queue >=0 && my_i_queue < num_tile_elements);
+        //         uint32_t data_32 = 0;
+        //         uint64_t data_64 = 0;
+        //         BufferAccessCount++;
+        //         if (my_word_size == 4) {
+        //             data_32 = writeBuffer[my_i_queue];
+        //             maa->spd->setData<uint32_t>(my_dst_tile, my_i_queue, writeBuffer[my_i_queue]);
 
-                    DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %u/%d/%f!\n", my_indirect_id, __func__, my_dst_tile, my_i_queue, ((uint32_t *)&data_32)[0], ((int32_t *)&data_32)[0], ((float *)&data_32)[0]);
+        //             DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %u/%d/%f!\n", my_indirect_id, __func__, my_dst_tile, my_i_queue, ((uint32_t *)&data_32)[0], ((int32_t *)&data_32)[0], ((float *)&data_32)[0]);
 
-                } else {
-                    data_64 = writeBuffer[my_i_queue];
-                    maa->spd->setData<uint64_t>(my_dst_tile, my_i_queue, writeBuffer[my_i_queue]);
+        //         } else {
+        //             data_64 = writeBuffer[my_i_queue];
+        //             maa->spd->setData<uint64_t>(my_dst_tile, my_i_queue, writeBuffer[my_i_queue]);
 
-                    DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %lu/%ld/%lf!\n", my_indirect_id, __func__, my_dst_tile, my_i_queue, ((uint64_t *)&data_64)[0], ((int64_t *)&data_64)[0], ((double *)&data_64)[0]);
+        //             DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %lu/%ld/%lf!\n", my_indirect_id, __func__, my_dst_tile, my_i_queue, ((uint64_t *)&data_64)[0], ((int64_t *)&data_64)[0], ((double *)&data_64)[0]);
 
-                }
+        //         }
 
-                num_recv_spd_write_accesses++;
+        //         num_recv_spd_write_accesses++;
 
-                int curr_blk_tileWrite = my_i_queue / words_per_cacheline; 
-                bool movedToNextBlk = (curr_blk_tileWrite != last_blk_tileWrite && last_blk_tileWrite != -1);
-                if(movedToNextBlk){
-                    // update the TileWriteData after sending the write request 
-                } else {
-                    // copy the data to the TileWriteData
-                    int offset_cl = my_i_queue % words_per_cacheline;
-                    if(my_word_size == 4){
-                        memcpy(&TileWriteData[offset_cl*my_word_size], &data_32, sizeof(uint32_t));
-                    } else if(my_word_size == 8){
-                        memcpy(&TileWriteData[offset_cl*my_word_size], &data_64, sizeof(uint64_t));
-                    } 
-                }
+        //         int curr_blk_tileWrite = my_i_queue / words_per_cacheline; 
+        //         bool movedToNextBlk = (curr_blk_tileWrite != last_blk_tileWrite && last_blk_tileWrite != -1);
+        //         if(movedToNextBlk){
+        //             // update the TileWriteData after sending the write request 
+        //         } else {
+        //             // copy the data to the TileWriteData
+        //             int offset_cl = my_i_queue % words_per_cacheline;
+        //             if(my_word_size == 4){
+        //                 memcpy(&TileWriteData[offset_cl*my_word_size], &data_32, sizeof(uint32_t));
+        //             } else if(my_word_size == 8){
+        //                 memcpy(&TileWriteData[offset_cl*my_word_size], &data_64, sizeof(uint64_t));
+        //             } 
+        //         }
 
-                // handle the last element in the queue
-                if(!(movedToNextBlk && (sentmyIQueue.size() == 1 && my_fill_finished))){
-                    writeBuffer.erase(my_i_queue);
-                    sentmyIQueue.pop();
-                }
+        //         // handle the last element in the queue
+        //         if(!(movedToNextBlk && (sentmyIQueue.size() == 1 && my_fill_finished))){
+        //             writeBuffer.erase(my_i_queue);
+        //             sentmyIQueue.pop();
+        //         }
 
-                if(movedToNextBlk || (sentmyIQueue.empty() && my_fill_finished)){
-                    Addr TileOffset = 0;
-                    if(sentmyIQueue.empty() && my_fill_finished){
-                        TileOffset = my_dst_tile * num_tile_elements * 4 + curr_blk_tileWrite*words_per_cacheline*my_word_size;
-                    } else {
-                        TileOffset = my_dst_tile * num_tile_elements * 4 + last_blk_tileWrite*words_per_cacheline*my_word_size;
-                    }
-                    Addr vaddr_tileWrite = maa->CacheTiles_address + TileOffset;
-                    assert(vaddr_tileWrite >= maa->CacheTiles_address);
-                    assert(vaddr_tileWrite == addrBlockAligner(vaddr_tileWrite, block_size));
-                    DPRINTF(MAAIndirect, "I[%d] %s: Virtual CacheTileAddress for write is %x\n", my_indirect_id, __func__, vaddr_tileWrite);
-                    Addr addrTileWrite = translatePacket(vaddr_tileWrite, false);
-                    DPRINTF(MAAIndirect, "I[%d] %s: Translated CacheTileAddress is %x\n", my_indirect_id, __func__, addrTileWrite);
+        //         if(movedToNextBlk || (sentmyIQueue.empty() && my_fill_finished)){
+        //             Addr TileOffset = 0;
+        //             if(sentmyIQueue.empty() && my_fill_finished){
+        //                 TileOffset = my_dst_tile * num_tile_elements * 4 + curr_blk_tileWrite*words_per_cacheline*my_word_size;
+        //             } else {
+        //                 TileOffset = my_dst_tile * num_tile_elements * 4 + last_blk_tileWrite*words_per_cacheline*my_word_size;
+        //             }
+        //             Addr vaddr_tileWrite = maa->CacheTiles_address + TileOffset;
+        //             assert(vaddr_tileWrite >= maa->CacheTiles_address);
+        //             assert(vaddr_tileWrite == addrBlockAligner(vaddr_tileWrite, block_size));
+        //             DPRINTF(MAAIndirect, "I[%d] %s: Virtual CacheTileAddress for write is %x\n", my_indirect_id, __func__, vaddr_tileWrite);
+        //             Addr addrTileWrite = translatePacket(vaddr_tileWrite, false);
+        //             DPRINTF(MAAIndirect, "I[%d] %s: Translated CacheTileAddress is %x\n", my_indirect_id, __func__, addrTileWrite);
 
-                    RequestPtr TileWrite_req = std::make_shared<Request>(addrTileWrite, block_size, flags, maa->requestorId);
-                    TileWrite_req->setRegion(maa->CacheTiles_rangeID);
-                    PacketPtr writeTile_pkt = new Packet(TileWrite_req, MemCmd::WritebackDirty);
-                    writeTile_pkt->allocate();
-                    writeTile_pkt->setData(TileWriteData);
-                    for (int i = 0; i < block_size / my_word_size; i++) {
-                        if (my_word_size == 4)
-                            DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] = %f!\n", my_indirect_id, __func__, i, writeTile_pkt->getPtr<float>()[i]);
-                        else
-                            DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] = %f!\n", my_indirect_id, __func__, i, writeTile_pkt->getPtr<double>()[i]);
-                    }
-                    Cycles latency_Tilewrite = Cycles(BufferAccessCount/words_per_cacheline);
-                    DPRINTF(MAAIndirect, "I[%d] %s: Cache Tile created %s to send in %d cycles, my_i:%d\n", my_indirect_id, __func__, writeTile_pkt->print(), latency_Tilewrite, my_i_queue);
-                    CacheTileWriteCount++;
-                    maa->sendPacket(FuncUnitType::INDIRECT, my_indirect_id, writeTile_pkt, maa->getClockEdge(latency_Tilewrite), true);
-                    DPRINTF(MAAIndirect, "I[%d] %s: Cache Tile Returned %s to send in %d cycles, my_i:%d\n", my_indirect_id, __func__, writeTile_pkt->print(), latency_Tilewrite, my_i_queue);
+        //             RequestPtr TileWrite_req = std::make_shared<Request>(addrTileWrite, block_size, flags, maa->requestorId);
+        //             TileWrite_req->setRegion(maa->CacheTiles_rangeID);
+        //             PacketPtr writeTile_pkt = new Packet(TileWrite_req, MemCmd::WritebackDirty);
+        //             writeTile_pkt->allocate();
+        //             writeTile_pkt->setData(TileWriteData);
+        //             for (int i = 0; i < block_size / my_word_size; i++) {
+        //                 if (my_word_size == 4)
+        //                     DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] = %f!\n", my_indirect_id, __func__, i, writeTile_pkt->getPtr<float>()[i]);
+        //                 else
+        //                     DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] = %f!\n", my_indirect_id, __func__, i, writeTile_pkt->getPtr<double>()[i]);
+        //             }
+        //             Cycles latency_Tilewrite = Cycles(BufferAccessCount/words_per_cacheline);
+        //             DPRINTF(MAAIndirect, "I[%d] %s: Cache Tile created %s to send in %d cycles, my_i:%d\n", my_indirect_id, __func__, writeTile_pkt->print(), latency_Tilewrite, my_i_queue);
+        //             CacheTileWriteCount++;
+        //             // ReadExTile_CAM[addrTileWrite]  = true;
+        //             // my_expected_responses++;
+        //             maa->sendPacket(FuncUnitType::INDIRECT, my_indirect_id, writeTile_pkt, maa->getClockEdge(latency_Tilewrite), true);
+        //             DPRINTF(MAAIndirect, "I[%d] %s: Cache Tile Returned %s to send in %d cycles, my_i:%d\n", my_indirect_id, __func__, writeTile_pkt->print(), latency_Tilewrite, my_i_queue);
                     
 
-                }
+        //         }
 
-                if(movedToNextBlk){
-                    int offset_cl = my_i_queue % words_per_cacheline;
-                    if(my_word_size == 4){
-                        memcpy(&TileWriteData[offset_cl*words_per_cacheline], &data_32, sizeof(uint32_t));
-                    } else if(my_word_size == 8){
-                        memcpy(&TileWriteData[offset_cl*words_per_cacheline], &data_64, sizeof(uint64_t));
-                    } 
-                }
-                last_blk_tileWrite = curr_blk_tileWrite;
+        //         if(movedToNextBlk){
+        //             int offset_cl = my_i_queue % words_per_cacheline;
+        //             if(my_word_size == 4){
+        //                 memcpy(&TileWriteData[offset_cl*words_per_cacheline], &data_32, sizeof(uint32_t));
+        //             } else if(my_word_size == 8){
+        //                 memcpy(&TileWriteData[offset_cl*words_per_cacheline], &data_64, sizeof(uint64_t));
+        //             } 
+        //         }
+        //         last_blk_tileWrite = curr_blk_tileWrite;
 
-                // create the packet and send it 
+        //         // create the packet and send it 
 
-            }
-        }
+        //     }
+        // }
 
         
 
@@ -1376,6 +1413,7 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
          my_instruction->opcode == Instruction::OpcodeType::INDIR_RMW_VECTOR || 
          my_instruction->opcode == Instruction::OpcodeType::INDIR_RMW_SCALAR
          ) {
+        my_received_responses++;
         RequestPtr real_req = std::make_shared<Request>(addr, block_size, flags, maa->requestorId);
         real_req->setRegion(my_addr_range_id);
         PacketPtr write_pkt = new Packet(real_req, MemCmd::WritebackDirty);

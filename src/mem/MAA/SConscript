@@ -2,6 +2,7 @@ Import('*')
 
 SimObject('MAA.py', sim_objects=['MAA'])
 
+Source('TileWrite.cc')
 Source('SPD.cc')
 Source('IF.cc')
 Source('Tables.cc')

@@ -395,9 +395,10 @@ bool MAA::sendOutstandingCachePacket() {
                 break;
             } else {
                 Addr paddr = it->paddr;
-                panic_if(it->packet->needsResponse(), "%s write packet %s needs response!\n", __func__, it->packet->print());
+                // panic_if(it->packet->needsResponse(), "%s write packet %s needs response!\n", __func__, it->packet->print());
                 OutstandingPacket tmp = my_outstanding_pkt_map[paddr];
-                my_outstanding_pkt_map.erase(paddr);
+                my_outstanding_pkt_map[paddr].sent = true;
+                // my_outstanding_pkt_map.erase(paddr);
                 panic_if(tmp.maaIDs.size() != 1, "%s multiple write packes coalesced into one!\n", __func__);
                 panic_if(tmp.funcUnits[0] != FuncUnitType::INDIRECT, "%s: func unit type %d does not match with %d\n", __func__, func_unit_names[(uint8_t)tmp.funcUnits[0]], func_unit_names[(uint8_t)FuncUnitType::INDIRECT]);
                 my_num_outstanding_indirect_pkts[tmp.maaIDs[0]]--;
@@ -563,9 +564,10 @@ bool MAA::sendOutstandingCachePacket() {
     }
     return true;
 }
+
 void MAA::recvTimingResp(PacketPtr pkt, bool cached) {
     DPRINTF(MAAPort, "%s: received %s, cmd: %s, size: %d\n", __func__, pkt->print(), pkt->cmdString(), pkt->getSize());
-    panic_if(pkt->cmd.toInt() != MemCmd::ReadExResp && pkt->cmd.toInt() != MemCmd::ReadResp, "%s received an unknown response: %s\n", __func__, pkt->print());
+    panic_if(pkt->cmd.toInt() != MemCmd::ReadExResp && pkt->cmd.toInt() != MemCmd::ReadResp && pkt->cmd.toInt() != MemCmd::WriteResp, "%s received an unknown response: %s\n", __func__, pkt->print());
     assert(pkt->getSize() == 64);
     Addr paddr = pkt->req->getPaddr();
     panic_if(my_outstanding_pkt_map.find(paddr) == my_outstanding_pkt_map.end(), "%s: response for packet %s not found in my_outstanding_pkt_map\n", __func__, pkt->print());

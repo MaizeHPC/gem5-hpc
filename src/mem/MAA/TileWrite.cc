@@ -1,0 +1,199 @@
+#include "mem/MAA/TileWrite.hh"
+#include "mem/MAA/IndirectAccess1.hh"
+#include "mem/MAA/Tables.hh"
+#include "base/logging.hh"
+#include "mem/MAA/MAA.hh"
+#include "mem/MAA/SPD.hh"
+#include "mem/MAA/IF.hh"
+#include "base/trace.hh"
+#include "base/types.hh"
+#include "debug/MAAIndirect.hh"
+#include "debug/MAATrace.hh"
+#include "mem/packet.hh"
+#include "sim/cur_tick.hh"
+#include <cassert>
+#include <cstdint>
+#include <string>
+
+#ifndef TRACING_ON
+#define TRACING_ON 1
+#endif
+
+namespace gem5 {
+
+    TileWrite::TileWrite(MAA *_maa, int &expected_response, int &received_response, int &my_max) : maa(_maa), 
+            expected_response(expected_response), received_response(received_response), my_max(my_max){
+        block_size = 64;
+        TileSize = 16384;
+    };
+
+    void TileWrite::set(int _TileID, uint32_t _wordsize, ContextID _CID, Addr _PC, 
+        uint32_t _block_size, uint32_t _TileSize){
+        TileID = _TileID;
+        assert(TileID >= 0 && TileID<= 32);
+
+        wordsize = _wordsize;
+        CID = _CID;
+        PC = _PC;
+        block_size = _block_size;
+        // TileSize = _TileSize;
+        words_per_block = block_size/wordsize;
+
+        tileReadExCount_sent = 0;
+        tileReadExCount_received = 0;
+        tileWriteCount_sent = 0;
+        tileWriteCount_received = 0;
+
+        ReadEx_current = 0;
+        write_current = 0;
+    }
+
+    Addr TileWrite::getVirtualAddress(int element_id){
+        const int TileSize = 16384;
+        assert(TileID >= 0 && TileID<= 32);
+        return maa->CacheTiles_address + TileID*TileSize*4 + element_id * wordsize;
+    }
+
+    Addr TileWrite::translatePacket(Addr vaddr){
+        RequestPtr translation_req = std::make_shared<Request>(vaddr, block_size, flags, maa->requestorId, PC, CID);
+        ThreadContext *tc = maa->system->threads[CID];
+        bool is_load = true;
+        maa->mmu->translateTiming(translation_req, tc, this, is_load ? BaseMMU::Read : BaseMMU::Write);
+        // The above function immediately does the translation and calls the finish function
+        assert(my_translation_done);
+        my_translation_done = false;
+        return my_translated_addr;
+    }
+
+    void TileWrite::finish(const Fault &fault, const RequestPtr &req, ThreadContext *tc, BaseMMU::Mode mode) {
+        panic_if(fault != NoFault, " %s: fault for request 0x%lx!\n", __func__, req->getVaddr());
+        assert(my_translation_done == false);
+        my_translation_done = true;
+        my_translated_addr = req->getPaddr();
+    }
+
+    void TileWrite::createAndSendTileExReads(int reqs_count){
+        for(int i = ReadEx_current; i < TileSize && i < ReadEx_current + reqs_count*words_per_block; i += words_per_block){
+            Addr v_block_addr = getVirtualAddress(i);
+            DPRINTF(MAAIndirect, "I[%d] %s: Virtual Cache Tile Address for write is %x\n", my_indirect_id, __func__, v_block_addr);
+            Addr p_block_addr = translatePacket(v_block_addr);
+
+            RequestPtr readex_req = std::make_shared<Request>(p_block_addr, block_size, flags, maa->requestorId);
+            struct TileWriteReqMeta twrm;
+            // if the entry is already there
+            if(CAM.find(p_block_addr) != CAM.end()){
+                twrm = CAM[p_block_addr];
+            }
+            twrm.ReadExSent = true;
+            CAM[p_block_addr]  = twrm; // this will be replaced with an address range check
+            readex_req->setRegion(maa->CacheTiles_rangeID);
+            PacketPtr readex_pkt;
+            readex_pkt = new Packet(readex_req, MemCmd::ReadExReq);
+            readex_pkt->headerDelay = readex_pkt->payloadDelay = 0;
+            readex_pkt->allocate();
+            expected_response++;
+            tileReadExCount_sent++;
+            maa->sendPacket(FuncUnitType::INDIRECT, my_indirect_id, readex_pkt, maa->getClockEdge(Cycles(i-ReadEx_current)), true);
+            DPRINTF(MAAIndirect, "I[%d] %s: created %s for mem\n", my_indirect_id, __func__, readex_pkt->print());
+        }
+        ReadEx_current = ReadEx_current + reqs_count*words_per_block;
+    }
+
+    void TileWrite::setdata(uint64_t data, int element_id){
+        struct TileWriteReqMeta twrm;
+        // check if the entry already exisits 
+        uint32_t block_element_id = (element_id/words_per_block) * words_per_block;
+        Addr v_block_addr_id = getVirtualAddress(block_element_id);
+        Addr p_block_addr = translatePacket(v_block_addr_id);
+
+        if(CAM.find(p_block_addr) != CAM.end()){
+            twrm = CAM[p_block_addr];
+        } else {
+            // create an entry
+            CAM[p_block_addr] = twrm;
+        }
+
+        // copy the data and update the count 
+        uint8_t offset_wid = (element_id % words_per_block) * wordsize;
+        // set the data 
+        memcpy(&twrm.data[offset_wid], &data, wordsize);
+        twrm.count++;
+
+        // update entry 
+        CAM[p_block_addr] = twrm;
+        write_tile_data();
+
+    }
+
+    bool TileWrite::recv_data_indirectunit(const Addr addr, uint8_t *dataptr, bool is_block_cached){
+        bool ret = false;
+        createAndSendTileExReads(1);
+        if(CAM.find(addr) != CAM.end()){
+            received_response++;
+            if(CAM[addr].ReadExSent){
+                struct TileWriteReqMeta twrm = CAM[addr];
+                twrm.ReadExRecv = true;
+                CAM[addr] = twrm;
+                ret = true;
+                write_tile_data();
+                maa->indirectAccessUnits[0].recv_updateTimeHistory(addr, is_block_cached);
+                CAM[addr].ReadExSent = false;
+                tileReadExCount_received++;
+            } else if(CAM[addr].WriteReqSent){
+                ret = true;
+                CAM.erase(addr);
+                tileWriteCount_received++;
+            } else {
+                panic("Unexpected packet has been received\n");
+            }
+        }
+        return ret;
+    }
+
+    uint32_t TileWrite::write_tile_data(){
+        int count = 0;
+        for(int i = write_current; i < my_max; i += words_per_block){
+            Addr v_block_addr = getVirtualAddress(i);
+            Addr p_block_addr = translatePacket(v_block_addr);
+            struct TileWriteReqMeta twrm;
+            // if the entry is already there
+
+            // int mainUnitExpected = expected_response - tileReadExCount_sent - tileWriteCount_sent;
+            // int mainUnitReceived = received_response - tileReadExCount_received - tileWriteCount_received;
+
+            // check for the last block
+            int last_i = (my_max / words_per_block) * words_per_block;
+            int last_word_count = my_max % words_per_block;
+
+            if(CAM.find(p_block_addr) != CAM.end()){
+                twrm = CAM[p_block_addr];
+                if((twrm.count == words_per_block || (i == last_i && twrm.count == last_word_count)) && twrm.ReadExRecv){
+                    // create the packet and write it 
+                    RequestPtr TileWrite_req = std::make_shared<Request>(p_block_addr, block_size, flags, maa->requestorId);
+                    TileWrite_req->setRegion(maa->CacheTiles_rangeID);
+                    PacketPtr writeTile_pkt = new Packet(TileWrite_req, MemCmd::WriteReq);
+                    writeTile_pkt->allocate();
+                    writeTile_pkt->setData(&twrm.data[0]);
+                    Cycles latency_Tilewrite = Cycles(i-write_current);
+                    expected_response++;
+                    DPRINTF(MAAIndirect, "I[%d] %s: Sending write back dirty packet is %s\n", my_indirect_id, __func__, writeTile_pkt->print());
+                    tileWriteCount_sent++;
+                    maa->sendPacket(FuncUnitType::INDIRECT, my_indirect_id, writeTile_pkt, maa->getClockEdge(latency_Tilewrite), true);
+                    count++;
+                    twrm.WriteReqSent = true;
+                    CAM[p_block_addr] = twrm;
+                    // CAM.erase(p_block_addr);
+
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        write_current += count*words_per_block;
+        return count;
+    }
+
+
+}
