@@ -44,7 +44,7 @@ void MAA::sendPacket(FuncUnitType funcUnit, uint8_t maaID, PacketPtr pkt, Tick t
                 panic_if(indirectAccessUnits[maaID].recvData(paddr, my_outstanding_pkt_map[paddr].packet->getPtr<uint8_t>(), my_outstanding_pkt_map[paddr].cached) == false, "%s: received %s but rejected from indirectAccessUnits[%d]\n", __func__, my_outstanding_pkt_map[paddr].packet->print(), maaID);
             } else if (funcUnit == FuncUnitType::STREAM) {
                 streamAccessUnits[maaID].readPacketSent(paddr);
-                panic_if(streamAccessUnits[maaID].recvData(paddr, my_outstanding_pkt_map[paddr].packet->getPtr<uint8_t>()) == false, "%s: received %s but rejected from streamAccessUnits[%d]\n", __func__, my_outstanding_pkt_map[paddr].packet->print(), maaID);
+                panic_if(streamAccessUnits[maaID].recvData(paddr, my_outstanding_pkt_map[paddr].packet->getPtr<uint8_t>(), my_outstanding_pkt_map[paddr].cached) == false, "%s: received %s but rejected from streamAccessUnits[%d]\n", __func__, my_outstanding_pkt_map[paddr].packet->print(), maaID);
             } else {
                 panic("Invalid func unit type\n");
             }
@@ -81,6 +81,7 @@ void MAA::sendPacket(FuncUnitType funcUnit, uint8_t maaID, PacketPtr pkt, Tick t
                     my_num_outstanding_indirect_pkts[maaID]++;
                 } else if (funcUnit == FuncUnitType::STREAM) {
                     my_num_outstanding_stream_pkts[maaID]++;
+                    DPRINTF(MAAPort, "%s: outstanding stream count %d\n", __func__, my_num_outstanding_stream_pkts[maaID]);
                 } else {
                     panic("Invalid func unit type\n");
                 }
@@ -144,8 +145,10 @@ void MAA::sendPacket(FuncUnitType funcUnit, uint8_t maaID, PacketPtr pkt, Tick t
             }
         } else if (funcUnit == FuncUnitType::STREAM) {
             my_num_outstanding_stream_pkts[maaID]++;
-            send_cache = true;
+            DPRINTF(MAAPort, "%s: outstanding stream count %d\n", __func__, my_num_outstanding_stream_pkts[maaID]);
+            
             if (my_outstanding_pkt_map[paddr].cached) {
+                send_cache = true;
                 if (pkt->isRead()) {
                     my_outstanding_stream_cache_read_pkts[core_id].insert(my_outstanding_pkt_map[paddr]);
                     DPRINTF(MAAPort, "%s: inserting my_outstanding_stream_cache_read_pkts[%s\n", __func__, core_id);
@@ -156,6 +159,7 @@ void MAA::sendPacket(FuncUnitType funcUnit, uint8_t maaID, PacketPtr pkt, Tick t
                     panic("Invalid packet type\n");
                 }
             } else {
+                send_mem = true;
                 if (pkt->isRead()) {
                     my_outstanding_stream_mem_read_pkts[core_id].insert(my_outstanding_pkt_map[paddr]);
                     DPRINTF(MAAPort, "%s: inserting my_outstanding_stream_mem_read_pkts[%s\n", __func__, core_id);
@@ -181,9 +185,13 @@ void MAA::sendPacket(FuncUnitType funcUnit, uint8_t maaID, PacketPtr pkt, Tick t
 bool MAA::scheduleNextSendMem() {
     bool return_val = false;
     Tick tick = 0;
+    bool all_channels_blocked =true;
     for (int ch = 0; ch < num_channels; ch++) {
-        if (mem_channels_blocked[ch])
+        if (mem_channels_blocked[ch]){
             continue;
+        } else {
+            all_channels_blocked = false;
+        }
         if (my_outstanding_indirect_mem_read_pkts[ch].empty() == false) {
             if (return_val == false) {
                 tick = my_outstanding_indirect_mem_read_pkts[ch].begin()->tick;
@@ -207,6 +215,9 @@ bool MAA::scheduleNextSendMem() {
             latency = getTicksToCycles(tick - curTick());
         }
         scheduleSendMemEvent(latency);
+    }
+    if(all_channels_blocked){
+        DPRINTF(MAAPort, "%s: all channels are blocked, no mem event scheduled\n", __func__);
     }
     return return_val;
 }
@@ -305,9 +316,14 @@ bool MAA::allStreamPacketsSent(uint8_t maaID) {
 bool MAA::sendOutstandingMemPacket() {
     bool packet_remaining = false;
     bool all_empty = true;
+    bool all_channel_blocked = true;
+
     for (int ch = 0; ch < num_channels; ch++) {
         if (mem_channels_blocked[ch])
             continue;
+        else 
+            all_channel_blocked = false;
+
         for (auto it = my_outstanding_indirect_mem_write_pkts[ch].begin(); it != my_outstanding_indirect_mem_write_pkts[ch].end();) {
             if (it->tick > curTick()) {
                 DPRINTF(MAAPort, "%s: waiting for %d cycles to send %s to memory\n", __func__, getTicksToCycles(it->tick - curTick()), it->packet->print());
@@ -334,6 +350,9 @@ bool MAA::sendOutstandingMemPacket() {
         }
         if (mem_channels_blocked[ch])
             continue;
+        else 
+            all_channel_blocked = false;
+
         for (auto it = my_outstanding_indirect_mem_read_pkts[ch].begin(); it != my_outstanding_indirect_mem_read_pkts[ch].end();) {
             if (it->tick > curTick()) {
                 DPRINTF(MAAPort, "%s: waiting for %d cycles to send %s to memory\n", __func__, getTicksToCycles(it->tick - curTick()), it->packet->print());
@@ -354,6 +373,7 @@ bool MAA::sendOutstandingMemPacket() {
                         indirectAccessUnits[tmp.maaIDs[i]].memReadPacketSent(it->paddr);
                     } else if (tmp.funcUnits[i] == FuncUnitType::STREAM) {
                         my_num_outstanding_stream_pkts[tmp.maaIDs[i]]--;
+                        DPRINTF(MAAPort, "%s: outstanding stream count %d\n", __func__, my_num_outstanding_stream_pkts[tmp.maaIDs[i]]);
                         streamAccessUnits[tmp.maaIDs[i]].readPacketSent(it->paddr);
                     } else {
                         panic("Invalid func unit type\n");
@@ -374,14 +394,24 @@ bool MAA::sendOutstandingMemPacket() {
     if (all_empty) {
         scheduleNextSendCache();
     }
+
+    if(all_channel_blocked){
+        DPRINTF(MAAPort, "%s: all memory channels are blocked, trying again in a clock cycles\n", __func__);
+        scheduleSendMemEvent(Cycles(1));
+    }
+
     return true;
 }
 bool MAA::sendOutstandingCachePacket() {
     bool packet_remaining = false;
     bool all_indirect_empty = allIndirectEmpty();
+    bool all_channel_blocked = true;
     for (int core = 0; core < num_cores; core++) {
         if (cache_bus_blocked[core])
             continue;
+        else 
+            all_channel_blocked = false;
+
         for (auto it = my_outstanding_indirect_cache_write_pkts[core].begin(); it != my_outstanding_indirect_cache_write_pkts[core].end();) {
             if (it->tick > curTick()) {
                 DPRINTF(MAAPort, "%s: waiting for %d cycles to send %s to cache\n", __func__, getTicksToCycles(it->tick - curTick()), it->packet->print());
@@ -397,8 +427,11 @@ bool MAA::sendOutstandingCachePacket() {
                 Addr paddr = it->paddr;
                 // panic_if(it->packet->needsResponse(), "%s write packet %s needs response!\n", __func__, it->packet->print());
                 OutstandingPacket tmp = my_outstanding_pkt_map[paddr];
-                my_outstanding_pkt_map[paddr].sent = true;
-                // my_outstanding_pkt_map.erase(paddr);
+                if(tmp.cmd != MemCmd::WriteReq){
+                    my_outstanding_pkt_map.erase(paddr);
+                } else {
+                    my_outstanding_pkt_map[paddr].sent = true;
+                }
                 panic_if(tmp.maaIDs.size() != 1, "%s multiple write packes coalesced into one!\n", __func__);
                 panic_if(tmp.funcUnits[0] != FuncUnitType::INDIRECT, "%s: func unit type %d does not match with %d\n", __func__, func_unit_names[(uint8_t)tmp.funcUnits[0]], func_unit_names[(uint8_t)FuncUnitType::INDIRECT]);
                 my_num_outstanding_indirect_pkts[tmp.maaIDs[0]]--;
@@ -409,6 +442,9 @@ bool MAA::sendOutstandingCachePacket() {
         }
         if (cache_bus_blocked[core])
             continue;
+        else 
+            all_channel_blocked = false;
+
         for (auto it = my_outstanding_indirect_cache_read_pkts[core].begin(); it != my_outstanding_indirect_cache_read_pkts[core].end();) {
             if (it->tick > curTick()) {
                 DPRINTF(MAAPort, "%s: waiting for %d cycles to send %s to cache\n", __func__, getTicksToCycles(it->tick - curTick()), it->packet->print());
@@ -429,6 +465,7 @@ bool MAA::sendOutstandingCachePacket() {
                         indirectAccessUnits[tmp.maaIDs[i]].cacheReadPacketSent(it->paddr);
                     } else if (tmp.funcUnits[i] == FuncUnitType::STREAM) {
                         my_num_outstanding_stream_pkts[tmp.maaIDs[i]]--;
+                        DPRINTF(MAAPort, "%s: outstanding stream count %d\n", __func__, my_num_outstanding_stream_pkts[tmp.maaIDs[i]]);
                         streamAccessUnits[tmp.maaIDs[i]].readPacketSent(it->paddr);
                     } else {
                         panic("Invalid func unit type\n");
@@ -441,6 +478,9 @@ bool MAA::sendOutstandingCachePacket() {
         }
         if (cache_bus_blocked[core])
             continue;
+        else 
+            all_channel_blocked = false;
+
         for (auto it = my_outstanding_stream_cache_write_pkts[core].begin(); it != my_outstanding_stream_cache_write_pkts[core].end();) {
             if (it->tick > curTick()) {
                 DPRINTF(MAAPort, "%s: waiting for %d cycles to send %s to cache\n", __func__, getTicksToCycles(it->tick - curTick()), it->packet->print());
@@ -456,17 +496,28 @@ bool MAA::sendOutstandingCachePacket() {
                 Addr paddr = it->paddr;
                 panic_if(it->packet->needsResponse(), "%s write packet %s needs response!\n", __func__, it->packet->print());
                 OutstandingPacket tmp = my_outstanding_pkt_map[paddr];
-                my_outstanding_pkt_map.erase(paddr);
+                if(tmp.cmd != MemCmd::WriteReq){
+                    my_outstanding_pkt_map.erase(paddr);
+                    
+                } else {
+                    my_outstanding_pkt_map[paddr].sent = true;
+                }
                 panic_if(tmp.maaIDs.size() != 1, "%s multiple write packes coalesced into one!\n", __func__);
                 panic_if(tmp.funcUnits[0] != FuncUnitType::STREAM, "%s: func unit type %d does not match with %d\n", __func__, func_unit_names[(uint8_t)tmp.funcUnits[0]], func_unit_names[(uint8_t)FuncUnitType::STREAM]);
                 my_num_outstanding_stream_pkts[tmp.maaIDs[0]]--;
-                streamAccessUnits[tmp.maaIDs[0]].writePacketSent(it->paddr);
+                DPRINTF(MAAPort, "%s: outstanding stream count %d\n", __func__, my_num_outstanding_stream_pkts[tmp.maaIDs[0]]);
+                if(tmp.cmd != MemCmd::WriteReq){
+                    streamAccessUnits[tmp.maaIDs[0]].writePacketSent(it->paddr);
+                }
                 it = my_outstanding_stream_cache_write_pkts[core].erase(it);
                 stats.port_cache_WR_packets += 1;
             }
         }
         if (cache_bus_blocked[core])
             continue;
+        else 
+            all_channel_blocked = false;
+
         for (auto it = my_outstanding_stream_cache_read_pkts[core].begin(); it != my_outstanding_stream_cache_read_pkts[core].end();) {
             if (it->tick > curTick()) {
                 DPRINTF(MAAPort, "%s: waiting for %d cycles to send %s to cache\n", __func__, getTicksToCycles(it->tick - curTick()), it->packet->print());
@@ -487,6 +538,7 @@ bool MAA::sendOutstandingCachePacket() {
                         indirectAccessUnits[tmp.maaIDs[i]].cacheReadPacketSent(it->paddr);
                     } else if (tmp.funcUnits[i] == FuncUnitType::STREAM) {
                         my_num_outstanding_stream_pkts[tmp.maaIDs[i]]--;
+                        DPRINTF(MAAPort, "%s: outstanding stream count %d\n", __func__, my_num_outstanding_stream_pkts[tmp.maaIDs[i]]);
                         streamAccessUnits[tmp.maaIDs[i]].readPacketSent(it->paddr);
                     } else {
                         panic("Invalid func unit type\n");
@@ -500,6 +552,9 @@ bool MAA::sendOutstandingCachePacket() {
         if (all_indirect_empty) {
             if (cache_bus_blocked[core])
                 continue;
+            else   
+                all_channel_blocked = false;
+
             for (auto it = my_outstanding_stream_mem_write_pkts[core].begin(); it != my_outstanding_stream_mem_write_pkts[core].end();) {
                 if (it->tick > curTick()) {
                     DPRINTF(MAAPort, "%s: waiting for %d cycles to send %s to cache\n", __func__, getTicksToCycles(it->tick - curTick()), it->packet->print());
@@ -519,13 +574,19 @@ bool MAA::sendOutstandingCachePacket() {
                     panic_if(tmp.maaIDs.size() != 1, "%s multiple write packes coalesced into one!\n", __func__);
                     panic_if(tmp.funcUnits[0] != FuncUnitType::STREAM, "%s: func unit type %d does not match with %d\n", __func__, func_unit_names[(uint8_t)tmp.funcUnits[0]], func_unit_names[(uint8_t)FuncUnitType::STREAM]);
                     my_num_outstanding_stream_pkts[tmp.maaIDs[0]]--;
-                    streamAccessUnits[tmp.maaIDs[0]].writePacketSent(it->paddr);
+                    DPRINTF(MAAPort, "%s: outstanding stream count %d\n", __func__, my_num_outstanding_stream_pkts[tmp.maaIDs[0]]);
+                    if(tmp.cmd != MemCmd::WriteReq){
+                        streamAccessUnits[tmp.maaIDs[0]].writePacketSent(it->paddr);
+                    }
                     it = my_outstanding_stream_mem_write_pkts[core].erase(it);
                     stats.port_cache_WR_packets += 1;
                 }
             }
             if (cache_bus_blocked[core])
                 continue;
+            else 
+                all_channel_blocked = false;
+
             for (auto it = my_outstanding_stream_mem_read_pkts[core].begin(); it != my_outstanding_stream_mem_read_pkts[core].end();) {
                 if (it->tick > curTick()) {
                     DPRINTF(MAAPort, "%s: waiting for %d cycles to send %s to cache\n", __func__, getTicksToCycles(it->tick - curTick()), it->packet->print());
@@ -546,6 +607,7 @@ bool MAA::sendOutstandingCachePacket() {
                             indirectAccessUnits[tmp.maaIDs[i]].cacheReadPacketSent(it->paddr);
                         } else if (tmp.funcUnits[i] == FuncUnitType::STREAM) {
                             my_num_outstanding_stream_pkts[tmp.maaIDs[i]]--;
+                            DPRINTF(MAAPort, "%s: outstanding stream count %d\n", __func__, my_num_outstanding_stream_pkts[tmp.maaIDs[i]]);
                             streamAccessUnits[tmp.maaIDs[i]].readPacketSent(it->paddr);
                         } else {
                             panic("Invalid func unit type\n");
@@ -562,6 +624,11 @@ bool MAA::sendOutstandingCachePacket() {
     if (packet_remaining) {
         scheduleNextSendCache();
     }
+
+    if(all_channel_blocked){
+        scheduleSendCacheEvent(Cycles(1));
+    }
+
     return true;
 }
 
@@ -578,7 +645,7 @@ void MAA::recvTimingResp(PacketPtr pkt, bool cached) {
         if (tmp.funcUnits[i] == FuncUnitType::INDIRECT) {
             panic_if(indirectAccessUnits[tmp.maaIDs[i]].recvData(pkt->getAddr(), pkt->getPtr<uint8_t>(), tmp.cached) == false, "%s: received %s but rejected from indirectAccessUnits[%d]\n", __func__, pkt->print(), tmp.maaIDs[i]);
         } else if (tmp.funcUnits[i] == FuncUnitType::STREAM) {
-            panic_if(streamAccessUnits[tmp.maaIDs[i]].recvData(pkt->getAddr(), pkt->getPtr<uint8_t>()) == false, "%s: received %s but rejected from streamAccessUnits[%d]\n", __func__, pkt->print(), tmp.maaIDs[i]);
+            panic_if(streamAccessUnits[tmp.maaIDs[i]].recvData(pkt->getAddr(), pkt->getPtr<uint8_t>(), tmp.cached) == false, "%s: received %s but rejected from streamAccessUnits[%d]\n", __func__, pkt->print(), tmp.maaIDs[i]);
         } else {
             panic("Invalid func unit type\n");
         }

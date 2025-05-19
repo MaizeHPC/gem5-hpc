@@ -37,6 +37,8 @@ void StreamAccessUnit::allocate(int _my_stream_id, unsigned int _num_request_tab
     request_table = new RequestTable(maa, num_request_table_addresses, num_request_table_entries_per_address, my_stream_id, true);
     my_translation_done = false;
     my_instruction = nullptr;
+
+    tilewriteunit = new TileWrite(maa, TW_sent_requests, TW_received_responses, my_size, FuncUnitType::STREAM);
 }
 Cycles StreamAccessUnit::updateLatency(int num_spd_condread_accesses, int num_spd_srcread_accesses, int num_spd_write_accesses, int num_requesttable_accesses) {
     if (num_spd_condread_accesses != 0) {
@@ -202,6 +204,8 @@ void StreamAccessUnit::executeInstruction() {
         // Initialization
         my_received_responses = 0;
         my_sent_requests = 0;
+        TW_received_responses = 0;
+        TW_sent_requests = 0;
         request_table->reset();
         my_SPD_read_finish_tick = curTick();
         my_SPD_write_finish_tick = curTick();
@@ -213,6 +217,14 @@ void StreamAccessUnit::executeInstruction() {
         my_instruction->state = Instruction::Status::Service;
         state = Status::Request;
         scheduleExecuteInstructionEvent(Cycles(my_all_page_info.size() * 2));
+
+        if(my_dst_tile != -1){
+            tilewriteunit->set(my_dst_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size, my_size);
+            int num_initial_reqs = 100;
+            tilewriteunit->createAndSendTileExReads(num_initial_reqs);
+        }
+
+
         break;
     }
     case Status::Request: {
@@ -321,8 +333,8 @@ void StreamAccessUnit::executeInstruction() {
         if (request_table->is_full()) {
             scheduleNextExecution();
         }
-        if (my_received_responses != my_sent_requests) {
-            DPRINTF(MAAStream, "S[%d] %s: Waiting for responses, received (%d) != send (%d)...\n", my_stream_id, __func__, my_received_responses, my_sent_requests);
+        if (get_all_received() != get_all_sent() || !maa->allStreamPacketsSent(my_stream_id)) {
+            DPRINTF(MAAStream, "S[%d] %s: Waiting for responses, received (%d) != send (%d)...\n", my_stream_id, __func__, get_all_received(), get_all_sent());
         } else {
             if (my_cond_tile != -1 && maa->spd->getTileStatus(my_cond_tile) != SPD::TileStatus::Finished) {
                 DPRINTF(MAAStream, "S[%d] %s: Waiting for cond tile %d to finish...\n", my_stream_id, __func__, my_cond_tile);
@@ -342,8 +354,8 @@ void StreamAccessUnit::executeInstruction() {
         DPRINTF(MAATrace, "S[%d] End [%s]\n", my_stream_id, my_instruction->print());
         panic_if(scheduleNextExecution(), "S[%d] %s: Execution is not completed!\n", my_stream_id, __func__);
         panic_if(maa->allStreamPacketsSent(my_stream_id) == false, "S[%d] %s: all stream packets are not sent!\n", my_stream_id, __func__);
-        panic_if(my_received_responses != my_sent_requests, "S[%d] %s: received_responses(%d) != sent_requests(%d)!\n",
-                 my_stream_id, __func__, my_received_responses, my_sent_requests);
+        panic_if(get_all_received() != get_all_sent(), "S[%d] %s: received_responses(%d) != sent_requests(%d)!\n",
+                 my_stream_id, __func__, get_all_received(), get_all_sent());
         DPRINTF(MAAStream, "S[%d] %s: state set to finish for request %s!\n", my_stream_id, __func__, my_instruction->print());
         my_instruction->state = Instruction::Status::Finish;
         if (my_request_start_tick != 0) {
@@ -378,7 +390,7 @@ void StreamAccessUnit::createReadPacket(Addr addr, int latency) {
         my_pkt = new Packet(real_req, MemCmd::ReadExReq);
     }
     my_pkt->allocate();
-    maa->sendPacket(FuncUnitType::STREAM, my_stream_id, my_pkt, maa->getClockEdge(Cycles(latency)));
+    maa->sendPacket(FuncUnitType::STREAM, my_stream_id, my_pkt, maa->getClockEdge(Cycles(latency)), true);
     DPRINTF(MAAStream, "S[%d] %s: created %s to send in %d cycles\n", my_stream_id, __func__, my_pkt->print(), latency);
     (*maa->stats.STR_LoadsCacheAccessing[my_stream_id])++;
 }
@@ -388,14 +400,26 @@ void StreamAccessUnit::readPacketSent(Addr addr) {
 void StreamAccessUnit::writePacketSent(Addr addr) {
     DPRINTF(MAAStream, "S[%d] %s: cache write packet 0x%lx sent!\n", my_stream_id, __func__, addr);
     my_received_responses++;
-    if (maa->allStreamPacketsSent(my_stream_id) && (my_received_responses == my_sent_requests)) {
+    if (maa->allStreamPacketsSent(my_stream_id) && (get_all_received() == get_all_sent() )) {
         DPRINTF(MAAStream, "S[%d] %s: all responses received, calling execution again in state %s!\n", my_stream_id, __func__, status_names[(int)state]);
         scheduleNextExecution(true);
     } else {
-        DPRINTF(MAAStream, "S[%d] %s: expected: %d, received: %d!\n", my_stream_id, __func__, my_received_responses, my_received_responses);
+        DPRINTF(MAAStream, "S[%d] %s: expected: %d, received: %d!\n", my_stream_id, __func__,  get_all_sent(), get_all_received());
     }
 }
-bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr) {
+bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached) {
+
+    if(tilewriteunit->recv_data(addr, dataptr, cached)){
+        DPRINTF(MAAStream, "S[%d] %s: expected: %d, received: %d!\n", my_stream_id, __func__, get_all_sent() , get_all_received());
+        DPRINTF(MAAStream, "S[%d] %s: my_received_responses: %d, TW_received_responses: %d!\n", my_stream_id, __func__, my_received_responses , TW_received_responses);
+        DPRINTF(MAAStream, "S[%d] %s: my_sent_requests: %d, TW_sent_requests: %d!\n", my_stream_id, __func__, my_sent_requests, TW_sent_requests);
+        if (maa->allStreamPacketsSent(my_stream_id) && get_all_received() == get_all_sent()) {
+            DPRINTF(MAAStream, "S[%d] %s: all responses received, calling execution again in state %s!\n", my_stream_id, __func__, status_names[(int)state]);
+            scheduleNextExecution(true);
+        }
+        return true;
+    }
+
     bool was_request_table_full = request_table->is_full();
     std::vector<RequestTableEntry> entries = request_table->get_entries(addr);
     if (entries.empty()) {
@@ -415,42 +439,46 @@ bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr) {
 
             /************ going to write data in order *************/
 
-            // if (my_word_size == 4) {
-            //     DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %u\n", my_stream_id, __func__, my_dst_tile, itr, dataptr_u32_typed[wid]);
-            //     maa->spd->setData<uint32_t>(my_dst_tile, itr, dataptr_u32_typed[wid]);
-            // } else {
-            //     DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %lu\n", my_stream_id, __func__, my_dst_tile, itr, dataptr_u64_typed[wid]);
-            //     maa->spd->setData<uint64_t>(my_dst_tile, itr, dataptr_u64_typed[wid]);
-            // }
-
             if (my_word_size == 4) {
                 DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %u\n", my_stream_id, __func__, my_dst_tile, itr, dataptr_u32_typed[wid]);
-                writeBuffer[itr] = dataptr_u32_typed[wid];
+                maa->spd->setData<uint32_t>(my_dst_tile, itr, dataptr_u32_typed[wid]);
+                tilewriteunit->setdata(dataptr_u32_typed[wid], itr);
             } else {
                 DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %lu\n", my_stream_id, __func__, my_dst_tile, itr, dataptr_u64_typed[wid]);
-                writeBuffer[itr] = dataptr_u64_typed[wid];
+                maa->spd->setData<uint64_t>(my_dst_tile, itr, dataptr_u64_typed[wid]);
+                tilewriteunit->setdata(dataptr_u64_typed[wid], itr);
             }
 
-            // rewriting the data in order
-            while(sentmyIQueue.size() > 0 && writeBuffer.find(sentmyIQueue.front()) != writeBuffer.end()){
-                int my_i_queue = sentmyIQueue.front();
-                if (my_word_size == 4) {
-                    uint32_t data_32 = writeBuffer[my_i_queue];
-                    maa->spd->setData<uint32_t>(my_dst_tile, my_i_queue, writeBuffer[my_i_queue]);
-                    maa->spd->SPDQueues[my_dst_tile].push(data_32);
-                    DPRINTF(MAAStream, "I[%d] %s: SPD[%d][%d] = %u/%d/%f!\n", my_stream_id, __func__, my_dst_tile, my_i_queue, ((uint32_t *)&data_32)[0], ((int32_t *)&data_32)[0], ((float *)&data_32)[0]);
+            // if (my_word_size == 4) {
+            //     DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %u\n", my_stream_id, __func__, my_dst_tile, itr, dataptr_u32_typed[wid]);
+            //     writeBuffer[itr] = dataptr_u32_typed[wid];
+            //     tilewriteunit->setdata(dataptr_u32_typed[wid], itr);
+            // } else {
+            //     DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %lu\n", my_stream_id, __func__, my_dst_tile, itr, dataptr_u64_typed[wid]);
+            //     writeBuffer[itr] = dataptr_u64_typed[wid];
+            //     tilewriteunit->setdata(dataptr_u32_typed[wid], itr);
+            // }
 
-                } else {
-                    uint64_t data_64 = writeBuffer[my_i_queue];
-                    maa->spd->setData<uint64_t>(my_dst_tile, my_i_queue, writeBuffer[my_i_queue]);
-                    maa->spd->SPDQueues[my_dst_tile].push(data_64);
-                    DPRINTF(MAAStream, "I[%d] %s: SPD[%d][%d] = %lu/%ld/%lf!\n", my_stream_id, __func__, my_dst_tile, my_i_queue, ((uint64_t *)&data_64)[0], ((int64_t *)&data_64)[0], ((double *)&data_64)[0]);
+            // // rewriting the data in order
+            // while(sentmyIQueue.size() > 0 && writeBuffer.find(sentmyIQueue.front()) != writeBuffer.end()){
+            //     int my_i_queue = sentmyIQueue.front();
+            //     if (my_word_size == 4) {
+            //         uint32_t data_32 = writeBuffer[my_i_queue];
+            //         maa->spd->setData<uint32_t>(my_dst_tile, my_i_queue, writeBuffer[my_i_queue]);
+            //         maa->spd->SPDQueues[my_dst_tile].push(data_32);
+            //         DPRINTF(MAAStream, "I[%d] %s: SPD[%d][%d] = %u/%d/%f!\n", my_stream_id, __func__, my_dst_tile, my_i_queue, ((uint32_t *)&data_32)[0], ((int32_t *)&data_32)[0], ((float *)&data_32)[0]);
 
-                }
-                writeBuffer.erase(my_i_queue);
-                sentmyIQueue.pop();
+            //     } else {
+            //         uint64_t data_64 = writeBuffer[my_i_queue];
+            //         maa->spd->setData<uint64_t>(my_dst_tile, my_i_queue, writeBuffer[my_i_queue]);
+            //         maa->spd->SPDQueues[my_dst_tile].push(data_64);
+            //         DPRINTF(MAAStream, "I[%d] %s: SPD[%d][%d] = %lu/%ld/%lf!\n", my_stream_id, __func__, my_dst_tile, my_i_queue, ((uint64_t *)&data_64)[0], ((int64_t *)&data_64)[0], ((double *)&data_64)[0]);
 
-            }
+            //     }
+            //     writeBuffer.erase(my_i_queue);
+            //     sentmyIQueue.pop();
+
+            // }
 
 
             /********************************/
@@ -475,11 +503,11 @@ bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr) {
     if (my_instruction->opcode == Instruction::OpcodeType::STREAM_LD) {
         my_received_responses++;
         updateLatency(0, 0, entries.size(), 1);
-        if (maa->allStreamPacketsSent(my_stream_id) && my_received_responses == my_sent_requests) {
+        if (maa->allStreamPacketsSent(my_stream_id) && get_all_sent() == get_all_received()) {
             DPRINTF(MAAStream, "S[%d] %s: all responses received, calling execution again in state %s!\n", my_stream_id, __func__, status_names[(int)state]);
             scheduleNextExecution(true);
         } else {
-            DPRINTF(MAAStream, "S[%d] %s: expected: %d, received: %d!\n", my_stream_id, __func__, my_received_responses, my_received_responses);
+            DPRINTF(MAAStream, "S[%d] %s: expected: %d, received: %d!\n", my_stream_id, __func__,  get_all_sent(), get_all_received());
         }
     } else {
         RequestPtr real_req = std::make_shared<Request>(addr, block_size, flags, maa->requestorId);
@@ -488,7 +516,7 @@ bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr) {
         write_pkt->allocate();
         write_pkt->setData(new_data);
         DPRINTF(MAAStream, "S[%d] %s: created %s to send in %d cycles\n", my_stream_id, __func__, write_pkt->print(), total_latency);
-        maa->sendPacket(FuncUnitType::STREAM, my_stream_id, write_pkt, maa->getClockEdge(total_latency));
+        maa->sendPacket(FuncUnitType::STREAM, my_stream_id, write_pkt, maa->getClockEdge(total_latency), true);
     }
     if (was_request_table_full) {
         scheduleNextExecution(true);

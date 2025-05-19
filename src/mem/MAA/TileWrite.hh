@@ -11,11 +11,14 @@
 
 #include "base/statistics.hh"
 #include "base/types.hh"
+#include "base/debug.hh"
+#include "base/compiler.hh" 
 #include "mem/packet.hh"
 #include "mem/request.hh"
 #include "sim/system.hh"
 #include "arch/generic/mmu.hh"
 #include "mem/MAA/Tables.hh"
+#include "mem/MAA/IF.hh"
 
 namespace gem5 {
 
@@ -32,6 +35,13 @@ struct TileWriteReqMeta {
     uint8_t count = 0;
 }; 
 
+// enum TileWriteMainUnit {
+//     StreamUnit_enum,
+//     IndirectUnit_enum,
+//     ALUUnit_enum,
+//     RangeFuserUnit_enum
+// };
+
 class TileWrite : public BaseMMU::Translation {
     MAA* maa;
     int TileID;
@@ -42,9 +52,8 @@ class TileWrite : public BaseMMU::Translation {
     uint32_t words_per_block;
 
     
-    int &expected_response, &received_response, &my_max;
-    int tileReadExCount_sent, tileReadExCount_received;
-    int tileWriteCount_sent, tileWriteCount_received;
+    int &expected_response, &received_response;
+    int &my_max;
 
     const int blockSizeReqs = 400;
     int my_indirect_id = 0;
@@ -56,8 +65,14 @@ class TileWrite : public BaseMMU::Translation {
     uint32_t ReadEx_current, write_current;
 
     std::map<Addr, struct TileWriteReqMeta> CAM;
+    FuncUnitType funcUnit;
+
+
+
+
     public: 
-        TileWrite(MAA *_maa, int &expected_response, int &received_response, int &my_max);
+        TileWrite(MAA *_maa, int &expected_response, int &received_response, int &my_max, 
+            FuncUnitType funcUnit);
 
         void set(int _TileID, uint32_t _wordsize, ContextID _CID, Addr _PC, 
                 uint32_t _block_size, uint32_t _TileSize);
@@ -68,7 +83,7 @@ class TileWrite : public BaseMMU::Translation {
         void finish(const Fault &fault, const RequestPtr &req, ThreadContext *tc, BaseMMU::Mode mode) ;
 
         void createAndSendTileExReads(int reqs_count);
-        bool recv_data_indirectunit(const Addr addr, uint8_t *dataptr, bool is_block_cached);
+        bool recv_data(const Addr addr, uint8_t *dataptr, bool is_block_cached);
         void setdata(uint64_t data, int element_id);
         uint32_t write_tile_data();
         void markDelayed() override {};

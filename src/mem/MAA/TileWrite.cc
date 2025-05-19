@@ -7,7 +7,7 @@
 #include "mem/MAA/IF.hh"
 #include "base/trace.hh"
 #include "base/types.hh"
-#include "debug/MAAIndirect.hh"
+#include "debug/MAATileWrite.hh"
 #include "debug/MAATrace.hh"
 #include "mem/packet.hh"
 #include "sim/cur_tick.hh"
@@ -21,8 +21,10 @@
 
 namespace gem5 {
 
-    TileWrite::TileWrite(MAA *_maa, int &expected_response, int &received_response, int &my_max) : maa(_maa), 
-            expected_response(expected_response), received_response(received_response), my_max(my_max){
+    TileWrite::TileWrite(MAA *_maa, int &expected_response, int &received_response, 
+            int &my_max, FuncUnitType _funcUnit) : maa(_maa), 
+            expected_response(expected_response), received_response(received_response), 
+            my_max(my_max), funcUnit(_funcUnit){
         block_size = 64;
         TileSize = 16384;
     };
@@ -38,11 +40,8 @@ namespace gem5 {
         block_size = _block_size;
         // TileSize = _TileSize;
         words_per_block = block_size/wordsize;
-
-        tileReadExCount_sent = 0;
-        tileReadExCount_received = 0;
-        tileWriteCount_sent = 0;
-        tileWriteCount_received = 0;
+        DPRINTF(MAATileWrite, "T[%d] %s: words_per_block is %x\n", my_indirect_id, __func__, words_per_block);
+        DPRINTF(MAATileWrite, "T[%d] %s: wordsize %x\n", my_indirect_id, __func__, wordsize);
 
         ReadEx_current = 0;
         write_current = 0;
@@ -75,7 +74,7 @@ namespace gem5 {
     void TileWrite::createAndSendTileExReads(int reqs_count){
         for(int i = ReadEx_current; i < TileSize && i < ReadEx_current + reqs_count*words_per_block; i += words_per_block){
             Addr v_block_addr = getVirtualAddress(i);
-            DPRINTF(MAAIndirect, "I[%d] %s: Virtual Cache Tile Address for write is %x\n", my_indirect_id, __func__, v_block_addr);
+            DPRINTF(MAATileWrite, "I[%d] %s: Virtual Cache Tile Address for write is %x\n", my_indirect_id, __func__, v_block_addr);
             Addr p_block_addr = translatePacket(v_block_addr);
 
             RequestPtr readex_req = std::make_shared<Request>(p_block_addr, block_size, flags, maa->requestorId);
@@ -92,9 +91,8 @@ namespace gem5 {
             readex_pkt->headerDelay = readex_pkt->payloadDelay = 0;
             readex_pkt->allocate();
             expected_response++;
-            tileReadExCount_sent++;
-            maa->sendPacket(FuncUnitType::INDIRECT, my_indirect_id, readex_pkt, maa->getClockEdge(Cycles(i-ReadEx_current)), true);
-            DPRINTF(MAAIndirect, "I[%d] %s: created %s for mem\n", my_indirect_id, __func__, readex_pkt->print());
+            maa->sendPacket(funcUnit, my_indirect_id, readex_pkt, maa->getClockEdge(Cycles(i-ReadEx_current + 1)), true);
+            DPRINTF(MAATileWrite, "I[%d] %s: created %s for mem\n", my_indirect_id, __func__, readex_pkt->print());
         }
         ReadEx_current = ReadEx_current + reqs_count*words_per_block;
     }
@@ -125,24 +123,29 @@ namespace gem5 {
 
     }
 
-    bool TileWrite::recv_data_indirectunit(const Addr addr, uint8_t *dataptr, bool is_block_cached){
+    bool TileWrite::recv_data(const Addr addr, uint8_t *dataptr, bool is_block_cached){
         bool ret = false;
-        createAndSendTileExReads(1);
+        DPRINTF(MAATileWrite, "T[%d] %s: received response for addr: %x \n", my_indirect_id, __func__, addr);
         if(CAM.find(addr) != CAM.end()){
             received_response++;
+            DPRINTF(MAATileWrite, "T[%d] %s: found the entry on CAM for addr: %x \n", my_indirect_id, __func__, addr);
             if(CAM[addr].ReadExSent){
+                DPRINTF(MAATileWrite, "T[%d] %s: ReadEx response addr: %x \n", my_indirect_id, __func__, addr);
                 struct TileWriteReqMeta twrm = CAM[addr];
                 twrm.ReadExRecv = true;
                 CAM[addr] = twrm;
                 ret = true;
                 write_tile_data();
-                maa->indirectAccessUnits[0].recv_updateTimeHistory(addr, is_block_cached);
+                if(funcUnit == FuncUnitType::INDIRECT){
+                    maa->indirectAccessUnits[0].recv_updateTimeHistory(addr, is_block_cached);
+                }
                 CAM[addr].ReadExSent = false;
-                tileReadExCount_received++;
+                createAndSendTileExReads(1);
             } else if(CAM[addr].WriteReqSent){
+                DPRINTF(MAATileWrite, "I[%d] %s: WriteReq response addr: %x \n", my_indirect_id, __func__, addr);
+                write_tile_data();
                 ret = true;
                 CAM.erase(addr);
-                tileWriteCount_received++;
             } else {
                 panic("Unexpected packet has been received\n");
             }
@@ -158,27 +161,23 @@ namespace gem5 {
             struct TileWriteReqMeta twrm;
             // if the entry is already there
 
-            // int mainUnitExpected = expected_response - tileReadExCount_sent - tileWriteCount_sent;
-            // int mainUnitReceived = received_response - tileReadExCount_received - tileWriteCount_received;
-
             // check for the last block
             int last_i = (my_max / words_per_block) * words_per_block;
             int last_word_count = my_max % words_per_block;
 
             if(CAM.find(p_block_addr) != CAM.end()){
                 twrm = CAM[p_block_addr];
-                if((twrm.count == words_per_block || (i == last_i && twrm.count == last_word_count)) && twrm.ReadExRecv){
+                if((twrm.count == words_per_block || (i == last_i && twrm.count == last_word_count)) && twrm.ReadExRecv) { //  
                     // create the packet and write it 
                     RequestPtr TileWrite_req = std::make_shared<Request>(p_block_addr, block_size, flags, maa->requestorId);
                     TileWrite_req->setRegion(maa->CacheTiles_rangeID);
                     PacketPtr writeTile_pkt = new Packet(TileWrite_req, MemCmd::WriteReq);
                     writeTile_pkt->allocate();
                     writeTile_pkt->setData(&twrm.data[0]);
-                    Cycles latency_Tilewrite = Cycles(i-write_current);
+                    Cycles latency_Tilewrite = Cycles(i-write_current + 1);
                     expected_response++;
-                    DPRINTF(MAAIndirect, "I[%d] %s: Sending write back dirty packet is %s\n", my_indirect_id, __func__, writeTile_pkt->print());
-                    tileWriteCount_sent++;
-                    maa->sendPacket(FuncUnitType::INDIRECT, my_indirect_id, writeTile_pkt, maa->getClockEdge(latency_Tilewrite), true);
+                    DPRINTF(MAATileWrite, "I[%d] %s: Sending write back dirty packet is %s\n", my_indirect_id, __func__, writeTile_pkt->print());
+                    maa->sendPacket(funcUnit, my_indirect_id, writeTile_pkt, maa->getClockEdge(latency_Tilewrite), true);
                     count++;
                     twrm.WriteReqSent = true;
                     CAM[p_block_addr] = twrm;

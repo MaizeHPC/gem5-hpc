@@ -162,6 +162,8 @@ protected:
     bool my_cond_tile_ready, my_idx_tile_ready, my_src_tile_ready;
     int my_expected_responses;
     int my_received_responses;
+    int TW_expected_responses;
+    int TW_received_responses;
     int my_processed_count;
     int my_i_count;
     std::vector<int> my_sorted_indices;
@@ -205,6 +207,14 @@ protected:
                          int num_spd_read_condidx_accesses,
                          int num_spd_write_accesses,
                          int num_requesttable_accesses);
+
+    int get_all_received(){
+        return my_received_responses + TW_received_responses;
+    }
+
+    int get_all_expected(){
+        return my_expected_responses + TW_expected_responses;
+    }
 
 public:
     void createReadPacket(Addr addr, int latency);

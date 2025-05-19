@@ -33,6 +33,7 @@ DebugFlag('MAAStream')
 DebugFlag('MAAInvalidator')
 DebugFlag('MAAALU')
 DebugFlag('MAARangeFuser')
+DebugFlag('MAATileWrite')
 
 # MAA Tags is so outrageously verbose, printing the MAA's entire tag
 # array on each timing access, that you should probably have to ask for
@@ -51,4 +52,5 @@ CompoundFlag('MAAAll', ['MAA',
                         'MAAStream',
                         'MAAInvalidator',
                         'MAAALU',
-                        'MAARangeFuser'])
+                        'MAARangeFuser',
+                        'MAATileWrite'])

@@ -7,6 +7,7 @@
 #include <string>
 #include <queue>
 #include <map>
+#include <atomic>
 
 #include "base/types.hh"
 #include "mem/packet.hh"
@@ -15,6 +16,7 @@
 #include "arch/generic/mmu.hh"
 #include "mem/MAA/IF.hh"
 #include "mem/MAA/Tables.hh"
+#include "mem/MAA/TileWrite.hh"
 
 namespace gem5 {
 
@@ -79,12 +81,17 @@ protected:
     std::queue<int> sentmyIQueue;
     std::map<int, uint64_t> writeBuffer;
 
+    // modified Vasan
+    TileWrite* tilewriteunit;
+
 public:
     StreamAccessUnit();
     ~StreamAccessUnit() {
         if (request_table != nullptr) {
             delete request_table;
         }
+        assert(tilewriteunit != nullptr);
+        delete [] tilewriteunit;
     }
     void allocate(int _my_stream_id, unsigned int _num_request_table_addresses, unsigned int _num_request_table_entries_per_address, unsigned int _num_tile_elements, MAA *_maa);
 
@@ -98,9 +105,16 @@ public:
                          int num_requesttable_accesses);
     bool scheduleNextExecution(bool force = false);
     void scheduleExecuteInstructionEvent(int latency = 0);
-    bool recvData(const Addr addr, uint8_t *dataptr);
+    bool recvData(const Addr addr, uint8_t *dataptr, bool cached);
     void writePacketSent(Addr addr);
     void readPacketSent(Addr addr);
+    int get_all_received(){
+        return my_received_responses + TW_received_responses;
+    }
+
+    int get_all_sent(){
+        return my_sent_requests + TW_sent_requests;
+    }
 
     /* Related to BaseMMU::Translation Inheretance */
     void markDelayed() override {}
@@ -118,6 +132,7 @@ protected:
     int8_t my_addr_range_id;
     int my_src_tile, my_dst_tile, my_cond_tile, my_min, my_max, my_stride;
     int my_received_responses, my_sent_requests;
+    int TW_received_responses, TW_sent_requests;
     int my_stream_id;
     Tick my_SPD_read_finish_tick;
     Tick my_SPD_write_finish_tick;

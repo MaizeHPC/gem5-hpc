@@ -120,7 +120,7 @@ void IndirectAccessUnit::allocate(int _my_indirect_id,
     request_table = new RequestTable(maa, num_request_table_addresses, num_request_table_entries_per_address, my_indirect_id, true);
 
 
-    tilewriteunit = new TileWrite(maa, my_expected_responses, my_received_responses, my_max);
+    tilewriteunit = new TileWrite(maa, TW_expected_responses, TW_received_responses, my_max, FuncUnitType::INDIRECT);
     // offset_table = new OffsetTable();
     // offset_table->allocate(my_indirect_id, num_tile_elements, maa, false);
 
@@ -611,6 +611,7 @@ void IndirectAccessUnit::fillRequestTable(bool &finished, bool &waitForFinish, b
         } else if (my_dst_tile != -1) {
             DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %u (cond not taken)\n", my_indirect_id, __func__, my_dst_tile, my_i, 0);
             maa->spd->setFakeData(my_dst_tile, my_i, my_word_size);
+            tilewriteunit->setdata(0, my_i);
         }
         // if(my_idx_tile != -1){
         //     DPRINTF(MAAIndirect, "poped value =%d,  my_i=%d\n",maa->spd->SPDQueues[my_idx_tile].front(), my_i);
@@ -682,6 +683,7 @@ void IndirectAccessUnit::executeInstruction() {
         // Initialization
         my_virtual_addr = 0;
         my_received_responses = my_expected_responses = 0; my_processed_count = 0;
+        TW_received_responses = TW_expected_responses = 0; 
         // offset_table->reset();
         // for (int i = 0; i < num_RT_slices[my_RT_config]; i++) {
         //     RT[my_RT_config][i].reset();
@@ -858,7 +860,7 @@ void IndirectAccessUnit::executeInstruction() {
         
 
         int offset_cache_tile_write = CacheTileWrite ? CacheTileWriteCount : 0;
-        if (maa->allIndirectPacketsSent(my_indirect_id) && my_received_responses == my_expected_responses + offset_cache_tile_write) {
+        if (maa->allIndirectPacketsSent(my_indirect_id) && get_all_received() == get_all_expected() + offset_cache_tile_write) {
             if (scheduleNextExecution()) {
                 DPRINTF(MAAIndirect, "I[%d] %s: requesting is still not ready, returning!\n", my_indirect_id, __func__);
                 break;
@@ -955,11 +957,11 @@ void IndirectAccessUnit::memWritePacketSent(Addr addr) {
     DPRINTF(MAAIndirect, "I[%d] %s: mem write packet 0x%lx sent\n", my_indirect_id, __func__, addr);
     // my_received_responses++;
     int offset_cache_tile_write = CacheTileWrite ? CacheTileWriteCount : 0;
-    if (maa->allIndirectPacketsSent(my_indirect_id) && (my_received_responses == my_expected_responses + offset_cache_tile_write)) {
+    if (maa->allIndirectPacketsSent(my_indirect_id) && (get_all_received() == get_all_expected() + offset_cache_tile_write)) {
         DPRINTF(MAAIndirect, "I[%d] %s: all responses received, calling execution again in state %s!\n", my_indirect_id, __func__, status_names[(int)state]);
         scheduleNextExecution(true);
     } else {
-        DPRINTF(MAAIndirect, "I[%d] %s: expected: %d, received: %d!\n", my_indirect_id, __func__, my_expected_responses, my_received_responses);
+        DPRINTF(MAAIndirect, "I[%d] %s: expected: %d, received: %d!\n", my_indirect_id, __func__, get_all_expected(), get_all_received());
     }
 }
 void IndirectAccessUnit::cacheReadPacketSent(Addr addr) {
@@ -971,11 +973,11 @@ void IndirectAccessUnit::cacheWritePacketSent(Addr addr) {
     DPRINTF(MAAIndirect, "I[%d] %s: cache write packet 0x%lx sent\n", my_indirect_id, __func__, addr);
     // my_received_responses++;
     int offset_cache_tile_write = CacheTileWrite ? CacheTileWriteCount : 0;
-    if (maa->allIndirectPacketsSent(my_indirect_id) && (my_received_responses == my_expected_responses + offset_cache_tile_write)) {
+    if (maa->allIndirectPacketsSent(my_indirect_id) && (get_all_received() == get_all_expected() + offset_cache_tile_write)) {
         DPRINTF(MAAIndirect, "I[%d] %s: all responses received, calling execution again in state %s!\n", my_indirect_id, __func__, status_names[(int)state]);
         scheduleNextExecution(true);
     } else {
-        DPRINTF(MAAIndirect, "I[%d] %s: expected: %d, received: %d!\n", my_indirect_id, __func__, my_expected_responses, my_received_responses);
+        DPRINTF(MAAIndirect, "I[%d] %s: expected: %d, received: %d!\n", my_indirect_id, __func__, get_all_expected(), get_all_received());
     }
 }
 
@@ -1009,9 +1011,11 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
     //     was_full = RT[my_RT_config][RT_idx].is_full();
     std::vector<RequestTableEntry> entries = request_table->get_entries(addr);
 
-    if(tilewriteunit->recv_data_indirectunit(addr, dataptr, is_block_cached)){
-        scheduleNextExecution(true);
-        return true;
+    if(my_dst_tile != -1) {
+        if(tilewriteunit->recv_data(addr, dataptr, is_block_cached)){
+            scheduleNextExecution(true);
+            return true;
+        }
     }
     // bool is_full = false;
     // if (RT_idx == my_RT_idx)
@@ -1033,7 +1037,7 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
     // }
 
     if (entries.size() == 0) {
-        panic("Somthing went wrong, at least one entry should be there\n");
+        panic("Addr:%x Somthing went wrong, at least one entry should be there\n", addr);
         return false;
     }
 
@@ -1072,7 +1076,7 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
             } else {
                 writeBuffer[itr] = dataptr_u64_typed[wid];
                 tilewriteunit->setdata(dataptr_u64_typed[wid], itr);
-                maa->spd->setData<uint32_t>(my_dst_tile, itr, dataptr_u64_typed[wid]);
+                maa->spd->setData<uint64_t>(my_dst_tile, itr, dataptr_u64_typed[wid]);
                 DPRINTF(MAAIndirect, "I[%d] %s: SPD_noWrite[%d][%d] = %lu/%ld/%lf!\n", my_indirect_id, __func__, my_dst_tile, itr, ((uint64_t *)new_data)[wid], ((int64_t *)new_data)[wid], ((double *)new_data)[wid]);
             }
         }
@@ -1431,11 +1435,11 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
     } else  {
         my_received_responses++;
         int offset_cache_tile_write = CacheTileWrite ? CacheTileWriteCount : 0;
-        if (maa->allIndirectPacketsSent(my_indirect_id) && my_received_responses == my_expected_responses + offset_cache_tile_write) {
+        if (maa->allIndirectPacketsSent(my_indirect_id) && get_all_received() == get_all_expected() + offset_cache_tile_write) {
             DPRINTF(MAAIndirect, "I[%d] %s: all responses received, calling execution again!\n", my_indirect_id, __func__);
             scheduleNextExecution(true);
         } else {
-            DPRINTF(MAAIndirect, "I[%d] %s: expected: %d, received: %d responses!\n", my_indirect_id, __func__, my_expected_responses, my_received_responses);
+            DPRINTF(MAAIndirect, "I[%d] %s: expected: %d, received: %d responses!\n", my_indirect_id, __func__, get_all_expected(), get_all_received());
         }
     }
     if (was_request_table_full) {
