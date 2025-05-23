@@ -53,7 +53,7 @@ class TileWrite : public BaseMMU::Translation {
 
     
     int &expected_response, &received_response;
-    int &my_max;
+    int my_max;
 
     const int blockSizeReqs = 400;
     int my_indirect_id = 0;
@@ -75,7 +75,7 @@ class TileWrite : public BaseMMU::Translation {
             FuncUnitType funcUnit);
 
         void set(int _TileID, uint32_t _wordsize, ContextID _CID, Addr _PC, 
-                uint32_t _block_size, uint32_t _TileSize);
+                uint32_t _block_size);
 
         Addr getVirtualAddress(int element_id);
         Addr translatePacket(Addr vaddr);
@@ -84,9 +84,37 @@ class TileWrite : public BaseMMU::Translation {
 
         void createAndSendTileExReads(int reqs_count);
         bool recv_data(const Addr addr, uint8_t *dataptr, bool is_block_cached);
-        void setdata(uint64_t data, int element_id);
+
         uint32_t write_tile_data();
         void markDelayed() override {};
+
+        template <typename T>
+        void setdata(T data, int element_id){
+            struct TileWriteReqMeta twrm;
+            // check if the entry already exisits 
+            uint32_t block_element_id = (element_id/words_per_block) * words_per_block;
+            Addr v_block_addr_id = getVirtualAddress(block_element_id);
+            Addr p_block_addr = translatePacket(v_block_addr_id);
+
+            if(CAM.find(p_block_addr) != CAM.end()){
+                twrm = CAM[p_block_addr];
+            } else {
+                // create an entry
+                CAM[p_block_addr] = twrm;
+            }
+
+            // copy the data and update the count 
+            uint8_t offset_wid = (element_id % words_per_block) * wordsize;
+            // set the data 
+            memcpy(&twrm.data[offset_wid], &data, wordsize);
+            twrm.count++;
+
+            // update entry 
+            CAM[p_block_addr] = twrm;
+            write_tile_data();
+            my_max = std::max(my_max, element_id);
+
+        }
 
 };
 

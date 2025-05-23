@@ -699,9 +699,18 @@ protected:
     std::multiset<OutstandingPacket, CompareByTick> *my_outstanding_stream_cache_write_pkts;
     std::multiset<OutstandingPacket, CompareByTick> *my_outstanding_stream_mem_write_pkts;
     std::multiset<OutstandingPacket, CompareByTick> *my_outstanding_stream_mem_read_pkts;
+    std::multiset<OutstandingPacket, CompareByTick> *my_outstanding_alu_cache_read_pkts;
+    std::multiset<OutstandingPacket, CompareByTick> *my_outstanding_alu_cache_write_pkts;
+    std::multiset<OutstandingPacket, CompareByTick> *my_outstanding_rangefuser_cache_read_pkts;
+    std::multiset<OutstandingPacket, CompareByTick> *my_outstanding_rangefuser_cache_write_pkts;
+
     std::unordered_map<Addr, OutstandingPacket> my_outstanding_pkt_map;
     uint32_t *my_num_outstanding_indirect_pkts;
     uint32_t *my_num_outstanding_stream_pkts;
+    uint32_t *my_num_outstanding_alu_pkts;
+    uint32_t *my_num_outstanding_rangefuser_pkts;
+
+
     bool allIndirectEmpty();
     bool scheduleNextSendCache();
     bool scheduleNextSendMem();

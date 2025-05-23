@@ -172,9 +172,13 @@ MAA::MAA(const MAAParams &p)
     my_last_reset_tick = curTick();
     my_num_outstanding_indirect_pkts = new uint32_t[num_maas];
     my_num_outstanding_stream_pkts = new uint32_t[num_maas];
+    my_num_outstanding_alu_pkts = new uint32_t[num_maas];
+    my_num_outstanding_rangefuser_pkts = new uint32_t[num_maas];
     for (int i = 0; i < num_maas; i++) {
         my_num_outstanding_indirect_pkts[i] = 0;
         my_num_outstanding_stream_pkts[i] = 0;
+        my_num_outstanding_alu_pkts[i] = 0;
+        my_num_outstanding_rangefuser_pkts[i] = 0;
     }
 
     // Cache based Tiles
@@ -199,6 +203,22 @@ MAA::~MAA() {
         delete port;
     delete[] my_num_outstanding_indirect_pkts;
     delete[] my_num_outstanding_stream_pkts;
+    delete[] my_num_outstanding_alu_pkts;
+    delete[] my_num_outstanding_rangefuser_pkts;
+
+    delete [] my_outstanding_indirect_cache_read_pkts ;
+    delete [] my_outstanding_indirect_cache_write_pkts ;
+    delete [] my_outstanding_indirect_mem_write_pkts ;
+    delete [] my_outstanding_indirect_mem_read_pkts ;
+    delete [] my_outstanding_stream_cache_read_pkts ;
+    delete [] my_outstanding_stream_cache_write_pkts ;
+    delete [] my_outstanding_stream_mem_write_pkts ;
+    delete [] my_outstanding_stream_mem_read_pkts ;
+    delete[] my_outstanding_alu_cache_read_pkts ;
+    delete[] my_outstanding_alu_cache_write_pkts ;
+    delete[] my_outstanding_rangefuser_cache_read_pkts ;
+    delete[] my_outstanding_rangefuser_cache_write_pkts ;
+
 }
 
 void MAA::addAddrRegion(Addr start, Addr end, int8_t id) {
@@ -323,6 +343,11 @@ void MAA::addRamulator(memory::Ramulator2 *_ramulator2) {
     my_outstanding_stream_cache_write_pkts = new std::multiset<OutstandingPacket, CompareByTick>[num_cores];
     my_outstanding_stream_mem_write_pkts = new std::multiset<OutstandingPacket, CompareByTick>[num_cores];
     my_outstanding_stream_mem_read_pkts = new std::multiset<OutstandingPacket, CompareByTick>[num_cores];
+
+    my_outstanding_alu_cache_read_pkts = new std::multiset<OutstandingPacket, CompareByTick>[num_cores];
+    my_outstanding_alu_cache_write_pkts = new std::multiset<OutstandingPacket, CompareByTick>[num_cores];
+    my_outstanding_rangefuser_cache_read_pkts = new std::multiset<OutstandingPacket, CompareByTick>[num_cores];
+    my_outstanding_rangefuser_cache_write_pkts = new std::multiset<OutstandingPacket, CompareByTick>[num_cores];
 }
 // RoBaRaCoCh address mapping taking from the Ramulator2
 int slice_lower_bits(uint64_t &addr, int bits) {

@@ -219,7 +219,7 @@ void StreamAccessUnit::executeInstruction() {
         scheduleExecuteInstructionEvent(Cycles(my_all_page_info.size() * 2));
 
         if(my_dst_tile != -1){
-            tilewriteunit->set(my_dst_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size, my_size);
+            tilewriteunit->set(my_dst_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size);
             int num_initial_reqs = 100;
             tilewriteunit->createAndSendTileExReads(num_initial_reqs);
         }
@@ -442,11 +442,11 @@ bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached) 
             if (my_word_size == 4) {
                 DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %u\n", my_stream_id, __func__, my_dst_tile, itr, dataptr_u32_typed[wid]);
                 maa->spd->setData<uint32_t>(my_dst_tile, itr, dataptr_u32_typed[wid]);
-                tilewriteunit->setdata(dataptr_u32_typed[wid], itr);
+                tilewriteunit->setdata<uint32_t>(dataptr_u32_typed[wid], itr);
             } else {
                 DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %lu\n", my_stream_id, __func__, my_dst_tile, itr, dataptr_u64_typed[wid]);
                 maa->spd->setData<uint64_t>(my_dst_tile, itr, dataptr_u64_typed[wid]);
-                tilewriteunit->setdata(dataptr_u64_typed[wid], itr);
+                tilewriteunit->setdata<uint64_t>(dataptr_u64_typed[wid], itr);
             }
 
             // if (my_word_size == 4) {

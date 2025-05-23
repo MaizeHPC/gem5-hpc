@@ -30,6 +30,8 @@ void ALUUnit::allocate(MAA *_maa, int _my_alu_id, Cycles _ALU_lane_latency, int 
     num_ALU_lanes = _num_ALU_lanes;
     num_tile_elements = _num_tile_elements;
     my_instruction = nullptr;
+
+    tilewriteunit = new TileWrite(maa, TW_sent_requests, TW_received_responses, my_max, FuncUnitType::ALU);
 }
 void ALUUnit::updateLatency(int num_spd_read_data_accesses,
                             int num_spd_read_cond_accesses,
@@ -189,6 +191,17 @@ void ALUUnit::executeInstruction() {
         // Setting the state of the instruction and ALU unit
         DPRINTF(MAAALU, "A[%d] %s: state set to work for request %s!\n", my_alu_id, __func__, my_instruction->print());
         my_instruction->state = Instruction::Status::Service;
+
+        TW_sent_requests = 0;
+        TW_received_responses = 0;
+        if(my_dst_tile != -1){
+            tilewriteunit->set(my_dst_tile, my_output_word_size, my_instruction->CID, 
+                            my_instruction->PC, my_output_word_size*my_output_words_per_cl);
+            int num_initial_reqs = 100;
+            tilewriteunit->createAndSendTileExReads(num_initial_reqs);
+        }
+
+
         state = Status::Work;
         [[fallthrough]];
     }
@@ -250,6 +263,8 @@ void ALUUnit::executeInstruction() {
                 DPRINTF(MAAALU, "A[%d] %s: my_i (%d) >= my_max (%d), finished!\n", my_alu_id, __func__, my_i, my_max);
                 break;
             }
+            DPRINTF(MAAALU, "A[%d] %s: my_max=%d\n", my_alu_id, __func__, my_max);
+
             bool cond_ready = my_cond_tile == -1 || maa->spd->getElementFinished(my_cond_tile, my_i, 4, (uint8_t)FuncUnitType::ALU, my_alu_id);
             bool src1_ready = cond_ready && maa->spd->getElementFinished(my_src1_tile, my_i, my_input_word_size, (uint8_t)FuncUnitType::ALU, my_alu_id);
             bool src2_ready = src1_ready && (my_instruction->opcode != Instruction::OpcodeType::ALU_VECTOR ||
@@ -343,7 +358,7 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32_compare;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32_compare);
-                            maa->spd->SPDQueues[my_dst_tile].push(result_u32_compare);
+                            tilewriteunit->setdata<uint32_t>(result_u32_compare, my_i);
                             num_spd_write_accesses++;
                         }
                         (*maa->stats.ALU_NumComparedWords[my_alu_id])++;
@@ -355,7 +370,7 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32_compute;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32_compute);
-                            maa->spd->SPDQueues[my_dst_tile].push(result_u32_compute);
+                            tilewriteunit->setdata<uint32_t>(result_u32_compute, my_i);
                             num_spd_write_accesses++;
                         }
                     }
@@ -436,7 +451,7 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32);
-                            maa->spd->SPDQueues[my_dst_tile].push(result_u32);
+                            tilewriteunit->setdata<uint32_t>(result_u32, my_i);;
                             num_spd_write_accesses++;
                         }
                         (*maa->stats.ALU_NumComparedWords[my_alu_id])++;
@@ -448,7 +463,7 @@ void ALUUnit::executeInstruction() {
                             my_red_i32 = result_i32;
                         } else {
                             maa->spd->setData<int32_t>(my_dst_tile, my_i, result_i32);
-                            maa->spd->SPDQueues[my_dst_tile].push(result_i32);
+                            tilewriteunit->setdata<uint32_t>(result_i32, my_i);
                             num_spd_write_accesses++;
                         }
                     }
@@ -514,7 +529,7 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32);
-                            maa->spd->SPDQueues[my_dst_tile].push(result_u32);
+                            tilewriteunit->setdata<uint32_t>(result_u32, my_i);
                             num_spd_write_accesses++;
                         }
                         (*maa->stats.ALU_NumComparedWords[my_alu_id])++;
@@ -526,7 +541,7 @@ void ALUUnit::executeInstruction() {
                             my_red_f32 = result_f32;
                         } else {
                             maa->spd->setData<float>(my_dst_tile, my_i, result_f32);
-                            maa->spd->SPDQueues[my_dst_tile].push(result_f32);
+                            tilewriteunit->setdata<float>(result_f32, my_i);
                             num_spd_write_accesses++;
                         }
                     }
@@ -607,7 +622,7 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32);
-                            maa->spd->SPDQueues[my_dst_tile].push(result_u32);
+                            tilewriteunit->setdata<uint32_t>(result_u32, my_i);
                             num_spd_write_accesses++;
                         }
                         (*maa->stats.ALU_NumComparedWords[my_alu_id])++;
@@ -619,7 +634,7 @@ void ALUUnit::executeInstruction() {
                             my_red_u64 = result_u64;
                         } else {
                             maa->spd->setData<uint64_t>(my_dst_tile, my_i, result_u64);
-                            maa->spd->SPDQueues[my_dst_tile].push(result_u64);
+                            tilewriteunit->setdata<uint64_t>(result_u64, my_i);
                             num_spd_write_accesses++;
                         }
                     }
@@ -700,7 +715,7 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32);
-                            maa->spd->SPDQueues[my_dst_tile].push(result_u32);
+                            tilewriteunit->setdata<uint32_t>(result_u32, my_i);
                             num_spd_write_accesses++;
                         }
                         (*maa->stats.ALU_NumComparedWords[my_alu_id])++;
@@ -712,7 +727,7 @@ void ALUUnit::executeInstruction() {
                             my_red_i64 = result_i64;
                         } else {
                             maa->spd->setData<uint64_t>(my_dst_tile, my_i, result_i64);
-                            maa->spd->SPDQueues[my_dst_tile].push(result_i64);
+                            tilewriteunit->setdata<uint64_t>(result_i64, my_i);
                             num_spd_write_accesses++;
                         }
                     }
@@ -778,7 +793,7 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32);
-                            maa->spd->SPDQueues[my_dst_tile].push(result_u32);
+                            tilewriteunit->setdata<uint32_t>(result_u32, my_i);
                             num_spd_write_accesses++;
                         }
                         (*maa->stats.ALU_NumComparedWords[my_alu_id])++;
@@ -790,7 +805,7 @@ void ALUUnit::executeInstruction() {
                             my_red_f64 = result_f64;
                         } else {
                             maa->spd->setData<double>(my_dst_tile, my_i, result_f64);
-                            maa->spd->SPDQueues[my_dst_tile].push(result_f64);
+                            tilewriteunit->setdata<double>(result_f64, my_i);
                             num_spd_write_accesses++;
                         }
                     }
@@ -807,37 +822,37 @@ void ALUUnit::executeInstruction() {
                     my_instruction->optype == Instruction::OPType::LTE_OP ||
                     my_instruction->optype == Instruction::OPType::EQ_OP) {
                     maa->spd->setData<uint32_t>(my_dst_tile, my_i, 0);
-                    maa->spd->SPDQueues[my_dst_tile].push(0);
+                    tilewriteunit->setdata<uint32_t>(0, my_i);
                 } else {
                     switch (my_instruction->datatype) {
                     case Instruction::DataType::UINT32_TYPE: {
                         maa->spd->setData<uint32_t>(my_dst_tile, my_i, 0);
-                        maa->spd->SPDQueues[my_dst_tile].push(0);
+                        tilewriteunit->setdata<uint32_t>(0, my_i);
                         break;
                     }
                     case Instruction::DataType::INT32_TYPE: {
                         maa->spd->setData<int32_t>(my_dst_tile, my_i, 0);
-                        maa->spd->SPDQueues[my_dst_tile].push(0);
+                        tilewriteunit->setdata<int32_t>(0, my_i);
                         break;
                     }
                     case Instruction::DataType::FLOAT32_TYPE: {
                         maa->spd->setData<float>(my_dst_tile, my_i, 0);
-                        maa->spd->SPDQueues[my_dst_tile].push(0);
+                        tilewriteunit->setdata<float>(0, my_i);
                         break;
                     }
                     case Instruction::DataType::UINT64_TYPE: {
                         maa->spd->setData<uint64_t>(my_dst_tile, my_i, 0);
-                        maa->spd->SPDQueues[my_dst_tile].push(0);
+                        tilewriteunit->setdata<uint64_t>(0, my_i);
                         break;
                     }
                     case Instruction::DataType::INT64_TYPE: {
                         maa->spd->setData<int64_t>(my_dst_tile, my_i, 0);
-                        maa->spd->SPDQueues[my_dst_tile].push(0);
+                        tilewriteunit->setdata<int64_t>(0, my_i);
                         break;
                     }
                     case Instruction::DataType::FLOAT64_TYPE: {
                         maa->spd->setData<double>(my_dst_tile, my_i, 0);
-                        maa->spd->SPDQueues[my_dst_tile].push(0);
+                        tilewriteunit->setdata<double>(0, my_i);
                         break;
                     }
                     default:
@@ -848,9 +863,17 @@ void ALUUnit::executeInstruction() {
             my_i++;
         }
         updateLatency(num_spd_read_data_accesses, num_spd_read_cond_accesses, num_spd_write_accesses, num_alu_accesses);
-        DPRINTF(MAAALU, "A[%d] %s: setting state to finish for request %s!\n", my_alu_id, __func__, my_instruction->print());
-        state = Status::Finish;
+        DPRINTF(MAAALU, "A[%d] %s: setting state to Wait for request %s!\n", my_alu_id, __func__, my_instruction->print());
+        state = Status::Wait;
         scheduleNextExecution(true);
+        break;
+    }
+    case Status::Wait: {
+        if(TW_sent_requests == TW_received_responses && TW_sent_requests != 0){
+            state = Status::Finish;
+            DPRINTF(MAAALU, "A[%d] %s: setting state to finish for request %s!\n", my_alu_id, __func__, my_instruction->print());
+            scheduleNextExecution(true);
+        }
         break;
     }
     case Status::Finish: {
@@ -923,4 +946,18 @@ void ALUUnit::scheduleExecuteInstructionEvent(int latency) {
     //         maa->reschedule(executeInstructionEvent, new_when);
     // }
 }
+
+bool ALUUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached){
+    bool ret = tilewriteunit->recv_data(addr, dataptr, cached);
+    if(TW_sent_requests == TW_received_responses && TW_sent_requests != 0){
+        scheduleNextExecution(true);
+    }
+    return ret;
+}
+
+void ALUUnit::cacheReadPacketSent(const Addr addr){}
+void ALUUnit::memReadPacketSent(const Addr addr){}
+void ALUUnit::cacheWritePacketSent(const Addr addr){}
+void ALUUnit::memWritePacketSent(const Addr addr){}
+
 } // namespace gem5

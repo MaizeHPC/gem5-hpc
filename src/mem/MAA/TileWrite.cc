@@ -23,14 +23,14 @@ namespace gem5 {
 
     TileWrite::TileWrite(MAA *_maa, int &expected_response, int &received_response, 
             int &my_max, FuncUnitType _funcUnit) : maa(_maa), 
-            expected_response(expected_response), received_response(received_response), 
-            my_max(my_max), funcUnit(_funcUnit){
+            expected_response(expected_response), received_response(received_response), funcUnit(_funcUnit){
         block_size = 64;
         TileSize = 16384;
+        my_translation_done = false;
     };
 
     void TileWrite::set(int _TileID, uint32_t _wordsize, ContextID _CID, Addr _PC, 
-        uint32_t _block_size, uint32_t _TileSize){
+        uint32_t _block_size){
         TileID = _TileID;
         assert(TileID >= 0 && TileID<= 32);
 
@@ -40,11 +40,12 @@ namespace gem5 {
         block_size = _block_size;
         // TileSize = _TileSize;
         words_per_block = block_size/wordsize;
-        DPRINTF(MAATileWrite, "T[%d] %s: words_per_block is %x\n", my_indirect_id, __func__, words_per_block);
-        DPRINTF(MAATileWrite, "T[%d] %s: wordsize %x\n", my_indirect_id, __func__, wordsize);
+        DPRINTF(MAATileWrite, "T[%d] %s %s: words_per_block is %x\n", my_indirect_id, __func__,func_unit_names[static_cast<int>(funcUnit)], words_per_block);
+        DPRINTF(MAATileWrite, "T[%d] %s %s: wordsize %x\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)],  wordsize);
 
         ReadEx_current = 0;
         write_current = 0;
+        my_max = 0;
     }
 
     Addr TileWrite::getVirtualAddress(int element_id){
@@ -74,7 +75,7 @@ namespace gem5 {
     void TileWrite::createAndSendTileExReads(int reqs_count){
         for(int i = ReadEx_current; i < TileSize && i < ReadEx_current + reqs_count*words_per_block; i += words_per_block){
             Addr v_block_addr = getVirtualAddress(i);
-            DPRINTF(MAATileWrite, "I[%d] %s: Virtual Cache Tile Address for write is %x\n", my_indirect_id, __func__, v_block_addr);
+            DPRINTF(MAATileWrite, "I[%d] %s %s: Virtual Cache Tile Address for write is %x\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)],  v_block_addr);
             Addr p_block_addr = translatePacket(v_block_addr);
 
             RequestPtr readex_req = std::make_shared<Request>(p_block_addr, block_size, flags, maa->requestorId);
@@ -97,35 +98,36 @@ namespace gem5 {
         ReadEx_current = ReadEx_current + reqs_count*words_per_block;
     }
 
-    void TileWrite::setdata(uint64_t data, int element_id){
-        struct TileWriteReqMeta twrm;
-        // check if the entry already exisits 
-        uint32_t block_element_id = (element_id/words_per_block) * words_per_block;
-        Addr v_block_addr_id = getVirtualAddress(block_element_id);
-        Addr p_block_addr = translatePacket(v_block_addr_id);
+    // void TileWrite::setdata(uint64_t data, int element_id){
+    //     struct TileWriteReqMeta twrm;
+    //     // check if the entry already exisits 
+    //     uint32_t block_element_id = (element_id/words_per_block) * words_per_block;
+    //     Addr v_block_addr_id = getVirtualAddress(block_element_id);
+    //     Addr p_block_addr = translatePacket(v_block_addr_id);
 
-        if(CAM.find(p_block_addr) != CAM.end()){
-            twrm = CAM[p_block_addr];
-        } else {
-            // create an entry
-            CAM[p_block_addr] = twrm;
-        }
+    //     if(CAM.find(p_block_addr) != CAM.end()){
+    //         twrm = CAM[p_block_addr];
+    //     } else {
+    //         // create an entry
+    //         CAM[p_block_addr] = twrm;
+    //     }
 
-        // copy the data and update the count 
-        uint8_t offset_wid = (element_id % words_per_block) * wordsize;
-        // set the data 
-        memcpy(&twrm.data[offset_wid], &data, wordsize);
-        twrm.count++;
+    //     // copy the data and update the count 
+    //     uint8_t offset_wid = (element_id % words_per_block) * wordsize;
+    //     // set the data 
+    //     memcpy(&twrm.data[offset_wid], &data, wordsize);
+    //     twrm.count++;
 
-        // update entry 
-        CAM[p_block_addr] = twrm;
-        write_tile_data();
+    //     // update entry 
+    //     CAM[p_block_addr] = twrm;
+    //     write_tile_data();
+    //     my_max = std::max(my_max, element_id);
 
-    }
+    // }
 
     bool TileWrite::recv_data(const Addr addr, uint8_t *dataptr, bool is_block_cached){
         bool ret = false;
-        DPRINTF(MAATileWrite, "T[%d] %s: received response for addr: %x \n", my_indirect_id, __func__, addr);
+        DPRINTF(MAATileWrite, "T[%d] %s %s: received response for addr: %x \n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], addr);
         if(CAM.find(addr) != CAM.end()){
             received_response++;
             DPRINTF(MAATileWrite, "T[%d] %s: found the entry on CAM for addr: %x \n", my_indirect_id, __func__, addr);
@@ -155,6 +157,7 @@ namespace gem5 {
 
     uint32_t TileWrite::write_tile_data(){
         int count = 0;
+        DPRINTF(MAATileWrite, "I[%d] %s %s: trying to write a tile data, my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], my_max);
         for(int i = write_current; i < my_max; i += words_per_block){
             Addr v_block_addr = getVirtualAddress(i);
             Addr p_block_addr = translatePacket(v_block_addr);
@@ -176,7 +179,7 @@ namespace gem5 {
                     writeTile_pkt->setData(&twrm.data[0]);
                     Cycles latency_Tilewrite = Cycles(i-write_current + 1);
                     expected_response++;
-                    DPRINTF(MAATileWrite, "I[%d] %s: Sending write back dirty packet is %s\n", my_indirect_id, __func__, writeTile_pkt->print());
+                    DPRINTF(MAATileWrite, "I[%d] %s %s: Sending write back dirty packet is %s\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)],  writeTile_pkt->print());
                     maa->sendPacket(funcUnit, my_indirect_id, writeTile_pkt, maa->getClockEdge(latency_Tilewrite), true);
                     count++;
                     twrm.WriteReqSent = true;

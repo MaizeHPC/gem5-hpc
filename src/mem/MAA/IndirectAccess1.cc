@@ -729,7 +729,7 @@ void IndirectAccessUnit::executeInstruction() {
 
         // 
         if(my_dst_tile != -1){
-            tilewriteunit->set(my_dst_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size, my_max);
+            tilewriteunit->set(my_dst_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size);
             int num_initial_reqs = 100;
             tilewriteunit->createAndSendTileExReads(num_initial_reqs);
         }
@@ -1070,12 +1070,12 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
         if (my_dst_tile != -1) {
             if (my_word_size == 4) {
                 writeBuffer[itr] = dataptr_u32_typed[wid];
-                tilewriteunit->setdata(dataptr_u32_typed[wid], itr);
+                tilewriteunit->setdata<uint32_t>(dataptr_u32_typed[wid], itr);
                 maa->spd->setData<uint32_t>(my_dst_tile, itr, dataptr_u32_typed[wid]);
                 DPRINTF(MAAIndirect, "I[%d] %s: SPD_noWrite[%d][%d] = %u/%d/%f!\n", my_indirect_id, __func__, my_dst_tile, itr, ((uint32_t *)new_data)[wid], ((int32_t *)new_data)[wid], ((float *)new_data)[wid]);
             } else {
                 writeBuffer[itr] = dataptr_u64_typed[wid];
-                tilewriteunit->setdata(dataptr_u64_typed[wid], itr);
+                tilewriteunit->setdata<uint64_t>(dataptr_u64_typed[wid], itr);
                 maa->spd->setData<uint64_t>(my_dst_tile, itr, dataptr_u64_typed[wid]);
                 DPRINTF(MAAIndirect, "I[%d] %s: SPD_noWrite[%d][%d] = %lu/%ld/%lf!\n", my_indirect_id, __func__, my_dst_tile, itr, ((uint64_t *)new_data)[wid], ((int64_t *)new_data)[wid], ((double *)new_data)[wid]);
             }
