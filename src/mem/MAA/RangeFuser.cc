@@ -28,6 +28,9 @@ void RangeFuserUnit::allocate(unsigned int _num_tile_elements, MAA *_maa, int _m
     maa = _maa;
     my_range_id = _my_range_id;
     my_instruction = nullptr;
+    tilewriteunit_0 = new TileWrite(maa, TW_sent_requests_0, TW_received_responses_0, my_size_0, FuncUnitType::RANGE);
+    tilewriteunit_1 = new TileWrite(maa, TW_sent_requests_1, TW_received_responses_1, my_size_1, FuncUnitType::RANGE);
+
 }
 void RangeFuserUnit::updateLatency(int num_spd_read_accesses,
                                    int num_spd_write_accesses,
@@ -112,6 +115,29 @@ void RangeFuserUnit::executeInstruction() {
         my_cond_tile_ready = (my_cond_tile == -1) ? true : false;
         my_min_tile_ready = false;
         my_max_tile_ready = false;
+
+        const int block_size = 64;
+        const int my_word_size = 4;
+
+
+        TW_received_responses_0 = 0;
+        TW_sent_requests_0 = 0;
+        TW_received_responses_1 = 0;
+        TW_sent_requests_1 = 0;
+
+        if(my_dst_i_tile != -1){
+            tilewriteunit_0->set(my_dst_i_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size);
+            int num_initial_reqs = 100;
+            tilewriteunit_0->createAndSendTileExReads(num_initial_reqs);
+        }
+
+        if(my_dst_j_tile != -1){
+            tilewriteunit_1->set(my_dst_j_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size);
+            int num_initial_reqs = 100;
+            tilewriteunit_1->createAndSendTileExReads(num_initial_reqs);
+        }
+
+
 
         // Setting the state of the instruction and RANGE unit
         DPRINTF(MAARangeFuser, "R[%d] %s: state set to work for request %s!\n", my_range_id, __func__, my_instruction->print());
@@ -209,6 +235,11 @@ void RangeFuserUnit::executeInstruction() {
                 for (; my_last_j < my_max_j && my_idx_j < num_tile_elements; my_last_j += my_stride, my_idx_j++) {
                     maa->spd->setData(my_dst_i_tile, my_idx_j, my_last_i);
                     maa->spd->setData(my_dst_j_tile, my_idx_j, my_last_j);
+
+                    tilewriteunit_0->setdata<uint32_t>(my_last_i, my_idx_j);
+                    tilewriteunit_1->setdata<uint32_t>(my_last_j, my_idx_j);
+
+
                     maa->spd->SPDQueues[my_dst_i_tile].push(my_last_i);
                     maa->spd->SPDQueues[my_dst_j_tile].push(my_last_j);
                     num_spd_write_accesses++;
@@ -229,8 +260,17 @@ void RangeFuserUnit::executeInstruction() {
         my_max_tile_ready = true;
         updateLatency(num_spd_read_accesses, num_spd_write_accesses, num_computed_words);
         DPRINTF(MAARangeFuser, "R[%d] %s: setting state to finish for request %s!\n", my_range_id, __func__, my_instruction->print());
-        state = Status::Finish;
+        state = Status::Wait;
         scheduleNextExecution(true);
+        break;
+    }
+    case Status::Wait: {
+        if((TW_sent_requests_0 == TW_received_responses_0 && TW_sent_requests_0 != 0) &&
+                (TW_sent_requests_1 == TW_received_responses_1 && TW_sent_requests_1 != 0)){
+            state = Status::Finish;
+            DPRINTF(MAARangeFuser, "A[%d] %s: setting state to finish for request %s!\n", my_range_id, __func__, my_instruction->print());
+            scheduleNextExecution(true);
+        }
         break;
     }
     case Status::Finish: {
@@ -279,4 +319,20 @@ void RangeFuserUnit::scheduleExecuteInstructionEvent(int latency) {
     //         maa->reschedule(executeInstructionEvent, new_when);
     // }
 }
+
+bool RangeFuserUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached){
+    bool ret0 = tilewriteunit_0->recv_data(addr, dataptr, cached);
+    bool ret1 = tilewriteunit_1->recv_data(addr, dataptr, cached);
+
+    if(ret0 && ret1){
+        panic("Request should only be originated from one request\n");
+    }
+
+    if((TW_sent_requests_0 == TW_received_responses_0 && TW_sent_requests_0 != 0) &&
+        (TW_sent_requests_1 == TW_received_responses_1 && TW_sent_requests_1 != 0)){
+        scheduleNextExecution(true);
+    }
+    return ret0 || ret1;
+}
+
 } // namespace gem5

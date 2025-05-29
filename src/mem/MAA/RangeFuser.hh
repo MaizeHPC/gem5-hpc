@@ -6,6 +6,7 @@
 #include <cstring>
 #include <string>
 #include "sim/system.hh"
+#include "mem/MAA/TileWrite.hh"
 
 namespace gem5 {
 
@@ -18,7 +19,8 @@ public:
         Idle = 0,
         Decode = 1,
         Work = 2,
-        Finish = 3,
+        Wait = 3,
+        Finish = 4,
         max
     };
 
@@ -32,6 +34,9 @@ protected:
     Status state;
     MAA *maa;
     int my_range_id;
+        // modified Vasan
+    TileWrite* tilewriteunit_0;
+    TileWrite* tilewriteunit_1;
 
 public:
     RangeFuserUnit();
@@ -44,6 +49,7 @@ public:
 
     bool scheduleNextExecution(bool force = false);
     void scheduleExecuteInstructionEvent(int latency = 0);
+    bool recvData(const Addr addr, uint8_t *dataptr, bool cached);
 
 protected:
     Instruction *my_instruction;
@@ -56,6 +62,11 @@ protected:
     Tick my_SPD_write_finish_tick;
     Tick my_compute_finish_tick;
     Tick my_decode_start_tick;
+
+    int TW_received_responses_0, TW_sent_requests_0;
+    int TW_received_responses_1, TW_sent_requests_1;
+    int my_size_0, my_size_1;
+
     void updateLatency(int num_spd_read_accesses,
                        int num_spd_write_accesses,
                        int num_compute_accesses);

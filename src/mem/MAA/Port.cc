@@ -347,12 +347,12 @@ bool MAA::scheduleNextSendCache() {
             }
         }
 
-        if (my_outstanding_rangefuser_cache_read_pkts[core_id].empty() == false) {
+        if (my_outstanding_rangefuser_cache_write_pkts[core_id].empty() == false) {
             if (return_val == false) {
-                tick = my_outstanding_rangefuser_cache_read_pkts[core_id].begin()->tick;
+                tick = my_outstanding_rangefuser_cache_write_pkts[core_id].begin()->tick;
                 return_val = true;
             } else {
-                tick = std::min(tick, my_outstanding_rangefuser_cache_read_pkts[core_id].begin()->tick);
+                tick = std::min(tick, my_outstanding_rangefuser_cache_write_pkts[core_id].begin()->tick);
             }
         }
 
@@ -377,7 +377,7 @@ bool MAA::scheduleNextSendCache() {
         }
     }
     if (return_val) {
-        Cycles latency = Cycles(0);
+        Cycles latency = Cycles(1);
         if (tick > curTick()) {
             latency = getTicksToCycles(tick - curTick());
         }
@@ -483,10 +483,10 @@ bool MAA::sendOutstandingMemPacket() {
         scheduleNextSendCache();
     }
 
-    if(all_channel_blocked){
-        DPRINTF(MAAPort, "%s: all memory channels are blocked, trying again in a clock cycles\n", __func__);
-        scheduleSendMemEvent(Cycles(1));
-    }
+    // if(all_channel_blocked){
+    //     DPRINTF(MAAPort, "%s: all memory channels are blocked, trying again in a clock cycles\n", __func__);
+    //     scheduleSendMemEvent(Cycles(1));
+    // }
 
     return true;
 }
@@ -750,10 +750,10 @@ bool MAA::sendOutstandingCachePacket() {
                 } else {
                     Addr paddr = it->paddr;
                     OutstandingPacket tmp = my_outstanding_pkt_map[paddr];
+                    my_outstanding_pkt_map[paddr].sent = true;
                     panic_if(tmp.maaIDs.size() != 1, "%s multiple write packes coalesced into one!\n", __func__);
-                    panic_if(tmp.funcUnits[0] != FuncUnitType::STREAM, "%s: func unit type %d does not match with %d\n", __func__, func_unit_names[(uint8_t)tmp.funcUnits[0]], func_unit_names[(uint8_t)FuncUnitType::STREAM]);
+                    panic_if(tmp.funcUnits[0] != FuncUnitType::RANGE, "%s: func unit type %d does not match with %d\n", __func__, func_unit_names[(uint8_t)tmp.funcUnits[0]], func_unit_names[(uint8_t)FuncUnitType::STREAM]);
                     my_num_outstanding_rangefuser_pkts[tmp.maaIDs[0]]--;
-                    DPRINTF(MAAPort, "%s: outstanding stream count %d\n", __func__, my_num_outstanding_stream_pkts[tmp.maaIDs[0]]);
                     it = my_outstanding_rangefuser_cache_write_pkts[core].erase(it);
                     stats.port_cache_WR_packets += 1;
                 }
@@ -785,7 +785,9 @@ bool MAA::sendOutstandingCachePacket() {
                             my_num_outstanding_stream_pkts[tmp.maaIDs[i]]--;
                             DPRINTF(MAAPort, "%s: outstanding stream count %d\n", __func__, my_num_outstanding_stream_pkts[tmp.maaIDs[i]]);
                             streamAccessUnits[tmp.maaIDs[i]].readPacketSent(it->paddr);
-                        } else if(tmp.funcUnits[i] == FuncUnitType::RANGE){
+                        } else if(tmp.funcUnits[i] == FuncUnitType::ALU){
+                            my_num_outstanding_alu_pkts[tmp.maaIDs[i]]--;
+                        }else if(tmp.funcUnits[i] == FuncUnitType::RANGE){
                             my_num_outstanding_rangefuser_pkts[tmp.maaIDs[i]]--;
                         } else {
                             panic("Invalid func unit type\n");
@@ -803,9 +805,9 @@ bool MAA::sendOutstandingCachePacket() {
         scheduleNextSendCache();
     }
 
-    if(all_channel_blocked){
-        scheduleSendCacheEvent(Cycles(1));
-    }
+    // if(all_channel_blocked){
+    //     scheduleSendCacheEvent(Cycles(1));
+    // }
 
     return true;
 }
@@ -826,7 +828,9 @@ void MAA::recvTimingResp(PacketPtr pkt, bool cached) {
             panic_if(streamAccessUnits[tmp.maaIDs[i]].recvData(pkt->getAddr(), pkt->getPtr<uint8_t>(), tmp.cached) == false, "%s: received %s but rejected from streamAccessUnits[%d]\n", __func__, pkt->print(), tmp.maaIDs[i]);
         } else if (tmp.funcUnits[i] == FuncUnitType::ALU) {
             panic_if(aluUnits[tmp.maaIDs[i]].recvData(pkt->getAddr(), pkt->getPtr<uint8_t>(), tmp.cached) == false, "%s: received %s but rejected from alu units[%d]\n", __func__, pkt->print(), tmp.maaIDs[i]);
-        } else {
+        } else if (tmp.funcUnits[i] == FuncUnitType::RANGE) {
+            panic_if(rangeUnits[tmp.maaIDs[i]].recvData(pkt->getAddr(), pkt->getPtr<uint8_t>(), tmp.cached) == false, "%s: received %s but rejected from range units[%d]\n", __func__, pkt->print(), tmp.maaIDs[i]);
+        }else {
             panic("Invalid func unit type\n");
         }
     }

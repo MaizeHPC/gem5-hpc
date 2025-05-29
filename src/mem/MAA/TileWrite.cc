@@ -187,9 +187,11 @@ namespace gem5 {
                     // CAM.erase(p_block_addr);
 
                 } else {
+                    DPRINTF(MAATileWrite, "I[%d] %s %s: entry for %d, twrm.count:%d, twrm.ReadExRecv: %d my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], p_block_addr, twrm.count, twrm.ReadExRecv, my_max);
                     break;
                 }
             } else {
+                DPRINTF(MAATileWrite, "I[%d] %s %s: entry for %d hasn't been created, my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], p_block_addr, my_max);
                 break;
             }
         }

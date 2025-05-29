@@ -936,15 +936,15 @@ void ALUUnit::setInstruction(Instruction *_instruction) {
 void ALUUnit::scheduleExecuteInstructionEvent(int latency) {
     DPRINTF(MAAALU, "A[%d] %s: scheduling execute for the ALU Unit in the next %d cycles!\n", my_alu_id, __func__, latency);
     Tick new_when = maa->getClockEdge(Cycles(latency));
-    panic_if(executeInstructionEvent.scheduled(), "Event already scheduled!\n");
-    maa->schedule(executeInstructionEvent, new_when);
-    // if (!executeInstructionEvent.scheduled()) {
-    //     maa->schedule(executeInstructionEvent, new_when);
-    // } else {
-    //     Tick old_when = executeInstructionEvent.when();
-    //     if (new_when < old_when)
-    //         maa->reschedule(executeInstructionEvent, new_when);
-    // }
+    // panic_if(executeInstructionEvent.scheduled(), "Event already scheduled!\n");
+    // maa->schedule(executeInstructionEvent, new_when);
+    if (!executeInstructionEvent.scheduled()) {
+        maa->schedule(executeInstructionEvent, new_when);
+    } else {
+        Tick old_when = executeInstructionEvent.when();
+        if (new_when < old_when)
+            maa->reschedule(executeInstructionEvent, new_when);
+    }
 }
 
 bool ALUUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached){
