@@ -67,6 +67,8 @@ class TileWrite : public BaseMMU::Translation {
     std::map<Addr, struct TileWriteReqMeta> CAM;
     FuncUnitType funcUnit;
 
+    bool last_elemet_set;
+
 
 
 
@@ -87,6 +89,7 @@ class TileWrite : public BaseMMU::Translation {
 
         uint32_t write_tile_data();
         void markDelayed() override {};
+        void mark_last_element_reached();
 
         template <typename T>
         void setdata(T data, int element_id){

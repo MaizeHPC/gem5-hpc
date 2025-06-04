@@ -400,6 +400,9 @@ void StreamAccessUnit::readPacketSent(Addr addr) {
 void StreamAccessUnit::writePacketSent(Addr addr) {
     DPRINTF(MAAStream, "S[%d] %s: cache write packet 0x%lx sent!\n", my_stream_id, __func__, addr);
     my_received_responses++;
+    if(my_received_responses == my_sent_requests){
+        tilewriteunit->mark_last_element_reached();
+    }
     if (maa->allStreamPacketsSent(my_stream_id) && (get_all_received() == get_all_sent() )) {
         DPRINTF(MAAStream, "S[%d] %s: all responses received, calling execution again in state %s!\n", my_stream_id, __func__, status_names[(int)state]);
         scheduleNextExecution(true);
@@ -518,6 +521,11 @@ bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached) 
         DPRINTF(MAAStream, "S[%d] %s: created %s to send in %d cycles\n", my_stream_id, __func__, write_pkt->print(), total_latency);
         maa->sendPacket(FuncUnitType::STREAM, my_stream_id, write_pkt, maa->getClockEdge(total_latency), true);
     }
+
+    if(my_received_responses == my_sent_requests){
+        tilewriteunit->mark_last_element_reached();
+    }
+
     if (was_request_table_full) {
         scheduleNextExecution(true);
     }

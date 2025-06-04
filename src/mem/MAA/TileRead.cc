@@ -1,4 +1,4 @@
-#include "mem/MAA/TileWrite.hh"
+#include "mem/MAA/TileRead.hh"
 #include "mem/MAA/IndirectAccess1.hh"
 #include "mem/MAA/Tables.hh"
 #include "base/logging.hh"
@@ -21,7 +21,7 @@
 
 namespace gem5 {
 
-    TileWrite::TileWrite(MAA *_maa, int &expected_response, int &received_response, 
+    TileRead::TileRead(MAA *_maa, int &expected_response, int &received_response, 
             int &my_max, FuncUnitType _funcUnit) : maa(_maa), 
             expected_response(expected_response), received_response(received_response), funcUnit(_funcUnit){
         block_size = 64;
@@ -29,7 +29,7 @@ namespace gem5 {
         my_translation_done = false;
     };
 
-    void TileWrite::set(int _TileID, uint32_t _wordsize, ContextID _CID, Addr _PC, 
+    void TileRead::set(int _TileID, uint32_t _wordsize, ContextID _CID, Addr _PC, 
         uint32_t _block_size){
         TileID = _TileID;
         assert(TileID >= 0 && TileID<= 32);
@@ -46,17 +46,18 @@ namespace gem5 {
         ReadEx_current = 0;
         write_current = 0;
         my_max = 0;
+        pop_data_counter = 0;
         last_elemet_set = false;
         CAM.clear();
     }
 
-    Addr TileWrite::getVirtualAddress(int element_id){
+    Addr TileRead::getVirtualAddress(int element_id){
         const int TileSize = 16384;
         assert(TileID >= 0 && TileID<= 32);
         return maa->CacheTiles_address + TileID*TileSize*4 + element_id * wordsize;
     }
 
-    Addr TileWrite::translatePacket(Addr vaddr){
+    Addr TileRead::translatePacket(Addr vaddr){
         RequestPtr translation_req = std::make_shared<Request>(vaddr, block_size, flags, maa->requestorId, PC, CID);
         ThreadContext *tc = maa->system->threads[CID];
         bool is_load = true;
@@ -67,18 +68,18 @@ namespace gem5 {
         return my_translated_addr;
     }
 
-    void TileWrite::finish(const Fault &fault, const RequestPtr &req, ThreadContext *tc, BaseMMU::Mode mode) {
+    void TileRead::finish(const Fault &fault, const RequestPtr &req, ThreadContext *tc, BaseMMU::Mode mode) {
         panic_if(fault != NoFault, " %s: fault for request 0x%lx!\n", __func__, req->getVaddr());
         assert(my_translation_done == false);
         my_translation_done = true;
         my_translated_addr = req->getPaddr();
     }
 
-    void TileWrite::mark_last_element_reached(){
+    void TileRead::mark_last_element_reached(){
         last_elemet_set =  true;
     }
 
-    void TileWrite::createAndSendTileExReads(int reqs_count){
+    void TileRead::createAndSendTileExReads(int reqs_count){
         for(int i = ReadEx_current; i < TileSize && i < ReadEx_current + reqs_count*words_per_block; i += words_per_block){
             Addr v_block_addr = getVirtualAddress(i);
             DPRINTF(MAATileWrite, "T[%d] %s %s: Virtual Cache Tile Address for write is %x\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)],  v_block_addr);
@@ -104,34 +105,8 @@ namespace gem5 {
         ReadEx_current = ReadEx_current + reqs_count*words_per_block;
     }
 
-    // void TileWrite::setdata(uint64_t data, int element_id){
-    //     struct TileWriteReqMeta twrm;
-    //     // check if the entry already exisits 
-    //     uint32_t block_element_id = (element_id/words_per_block) * words_per_block;
-    //     Addr v_block_addr_id = getVirtualAddress(block_element_id);
-    //     Addr p_block_addr = translatePacket(v_block_addr_id);
 
-    //     if(CAM.find(p_block_addr) != CAM.end()){
-    //         twrm = CAM[p_block_addr];
-    //     } else {
-    //         // create an entry
-    //         CAM[p_block_addr] = twrm;
-    //     }
-
-    //     // copy the data and update the count 
-    //     uint8_t offset_wid = (element_id % words_per_block) * wordsize;
-    //     // set the data 
-    //     memcpy(&twrm.data[offset_wid], &data, wordsize);
-    //     twrm.count++;
-
-    //     // update entry 
-    //     CAM[p_block_addr] = twrm;
-    //     write_tile_data();
-    //     my_max = std::max(my_max, element_id);
-
-    // }
-
-    bool TileWrite::recv_data(const Addr addr, uint8_t *dataptr, bool is_block_cached){
+    bool TileRead::recv_data(const Addr addr, uint8_t *dataptr, bool is_block_cached){
         bool ret = false;
         DPRINTF(MAATileWrite, "T[%d] %s %s: received response for addr: %x \n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], addr);
         if(CAM.find(addr) != CAM.end()){
@@ -141,19 +116,14 @@ namespace gem5 {
                 DPRINTF(MAATileWrite, "T[%d] %s: ReadEx response addr: %x \n", my_indirect_id, __func__, addr);
                 struct TileWriteReqMeta twrm = CAM[addr];
                 twrm.ReadExRecv = true;
+                memcpy(&twrm.data[0], dataptr, 64);
                 CAM[addr] = twrm;
                 ret = true;
-                write_tile_data();
                 if(funcUnit == FuncUnitType::INDIRECT){
                     maa->indirectAccessUnits[0].recv_updateTimeHistory(addr, is_block_cached);
                 }
                 CAM[addr].ReadExSent = false;
                 createAndSendTileExReads(1);
-            } else if(CAM[addr].WriteReqSent){
-                DPRINTF(MAATileWrite, "T[%d] %s: WriteReq response addr: %x \n", my_indirect_id, __func__, addr);
-                write_tile_data();
-                ret = true;
-                CAM.erase(addr);
             } else {
                 panic("Unexpected packet has been received\n");
             }
@@ -161,7 +131,7 @@ namespace gem5 {
         return ret;
     }
 
-    uint32_t TileWrite::write_tile_data(){
+    uint32_t TileRead::write_to_FIFO(){
         int count = 0;
         DPRINTF(MAATileWrite, "T[%d] %s %s: trying to write a tile data, my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], my_max);
         int bound_max = (my_max/words_per_block + 1) * words_per_block;

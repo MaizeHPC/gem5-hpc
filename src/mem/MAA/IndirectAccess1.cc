@@ -1447,6 +1447,10 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
         panic_if(state != Status::Request && state != Status::Fill, "I[%d] %s: state is %s!\n", my_indirect_id, __func__, status_names[(int)state]);
         scheduleNextExecution(true);
     }
+
+    if(my_received_responses == my_expected_responses){
+        tilewriteunit->mark_last_element_reached();
+    }
     return true;
 }
 

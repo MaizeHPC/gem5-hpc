@@ -260,6 +260,9 @@ void RangeFuserUnit::executeInstruction() {
         my_max_tile_ready = true;
         updateLatency(num_spd_read_accesses, num_spd_write_accesses, num_computed_words);
         DPRINTF(MAARangeFuser, "R[%d] %s: setting state to finish for request %s!\n", my_range_id, __func__, my_instruction->print());
+        tilewriteunit_0->mark_last_element_reached();
+        tilewriteunit_1->mark_last_element_reached();
+
         state = Status::Wait;
         scheduleNextExecution(true);
         break;

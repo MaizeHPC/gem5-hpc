@@ -864,6 +864,7 @@ void ALUUnit::executeInstruction() {
         }
         updateLatency(num_spd_read_data_accesses, num_spd_read_cond_accesses, num_spd_write_accesses, num_alu_accesses);
         DPRINTF(MAAALU, "A[%d] %s: setting state to Wait for request %s!\n", my_alu_id, __func__, my_instruction->print());
+        tilewriteunit->mark_last_element_reached();
         state = Status::Wait;
         scheduleNextExecution(true);
         break;

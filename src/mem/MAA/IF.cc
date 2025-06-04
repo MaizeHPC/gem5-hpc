@@ -282,6 +282,8 @@ Instruction *IF::getReady(FuncUnitType funcUniType, int maa_id) {
         panic_if(maa_id == -1, "Invalidator cannot have maa_id!\n");
         for (int i = 0; i < num_instructions_per_maa; i++) {
             int instr_idx = (rand_base + i) % num_instructions_per_maa;
+
+            // remove the service to execute units one by one
             if (valids[maa_id][instr_idx] &&
                 instructions[maa_id][instr_idx].maa_id == maa_id &&
                 instructions[maa_id][instr_idx].state == Instruction::Status::Idle &&

@@ -1,0 +1,130 @@
+#ifndef __MEM_MAA_TILE_READ_HH__
+#define __MEM_MAA_TILE_READ_HH__
+
+#include <cassert>
+#include <cstdint>
+#include <cstring>
+#include <string>
+#include <map>
+#include <queue>
+#include <set>
+
+#include "base/statistics.hh"
+#include "base/types.hh"
+#include "base/debug.hh"
+#include "base/compiler.hh" 
+#include "mem/packet.hh"
+#include "mem/request.hh"
+#include "sim/system.hh"
+#include "arch/generic/mmu.hh"
+#include "mem/MAA/Tables.hh"
+#include "mem/MAA/IF.hh"
+
+namespace gem5 {
+
+class MAA;
+class IndirectAccessUnit;
+class Instruction;
+
+
+// enum TileWriteMainUnit {
+//     StreamUnit_enum,
+//     IndirectUnit_enum,
+//     ALUUnit_enum,
+//     RangeFuserUnit_enum
+// };
+
+struct TileReadReqMeta {
+    bool ReadExSent = false;
+    bool ReadExRecv = false;
+    uint8_t data[64];
+    uint8_t count = 0;
+}; 
+
+class TileRead : public BaseMMU::Translation {
+    MAA* maa;
+    int TileID;
+    uint32_t TileSize, wordsize;
+    ContextID CID;
+    Addr PC;
+    uint32_t block_size;
+    uint32_t words_per_block;
+
+    
+    int &expected_response, &received_response;
+    int my_max;
+
+    const int blockSizeReqs = 400;
+    int my_indirect_id = 0;
+
+    bool my_translation_done;
+    Addr my_translated_addr;
+    Request::Flags flags = 0;
+
+    uint32_t ReadEx_current, write_current;
+
+    std::map<Addr, struct TileWriteReqMeta> CAM;
+    FuncUnitType funcUnit;
+
+    bool last_elemet_set;
+    int pop_data_counter;
+
+
+
+
+    public: 
+        TileRead(MAA *_maa, int &expected_response, int &received_response, int &my_max, 
+            FuncUnitType funcUnit);
+
+        void set(int _TileID, uint32_t _wordsize, ContextID _CID, Addr _PC, 
+                uint32_t _block_size);
+
+        Addr getVirtualAddress(int element_id);
+        Addr translatePacket(Addr vaddr);
+
+        void finish(const Fault &fault, const RequestPtr &req, ThreadContext *tc, BaseMMU::Mode mode) ;
+
+        void createAndSendTileExReads(int reqs_count);
+        bool recv_data(const Addr addr, uint8_t *dataptr, bool is_block_cached);
+
+        uint32_t write_tile_data();
+        void markDelayed() override {};
+        void mark_last_element_reached();
+
+        template<typename T> bool getData(T& data){
+
+                Addr v_block_addr = getVirtualAddress(pop_data_counter);
+                Addr p_block_addr = translatePacket(v_block_addr);
+                struct TileWriteReqMeta twrm;
+                // if the entry is already there
+
+                // check for the last block
+                int last_i = (my_max / words_per_block) * words_per_block;
+                int last_word_count = my_max % words_per_block + 1;
+                if(CAM.find(p_block_addr) != CAM.end()){
+                    twrm = CAM[p_block_addr];
+                    if(twrm.ReadExRecv) { //  
+                        int offset = pop_data_counter % words_per_block;
+                        memcpy(data, &twrm.data[0], wordsize);
+                        if(offset == words_per_block-1){
+                            CAM.erase(p_block_addr);
+                        }
+                    } else {
+                        DPRINTF(MAATileWrite, "T[%d] %s %s i:%d : Data has not been received my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], i, my_max);
+                        break;
+                    }
+                } else {
+                    DPRINTF(MAATileWrite, "T[%d] %s %s i:%d : No entries in the table my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], i, my_max);
+                    break;
+                }
+            };
+    };
+
+}
+
+
+
+
+
+
+#endif //__MEM_MAA_TILE_READ_HH__
