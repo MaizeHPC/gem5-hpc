@@ -254,6 +254,7 @@ SPD::SPD(MAA *_maa,
     for(int i = 0; i <  num_tiles; i++){
         queue_rd_ptrs[i] = 0;
     }
+    tile_write_counts.resize(num_tiles);
     // tile_rd_ptrs = new uint32_t[num_tiles];
     // tile_wr_ptrs = new uint32_t[num_tiles];
 

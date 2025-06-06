@@ -17,6 +17,7 @@
 #include "arch/generic/mmu.hh"
 #include "mem/MAA/Tables.hh"
 #include "mem/MAA/TileWrite.hh"
+#include "mem/MAA/TileRead.hh"
 
 namespace gem5 {
 
@@ -100,8 +101,7 @@ protected:
     bool CacheTileWrite;
     uint32_t CacheTileWriteCount;
 
-    // Modified --- Vasan 
-    TileWrite* tilewriteunit;
+
 
 
 public:
@@ -147,6 +147,10 @@ public:
             return *((T*) (&data)); 
         }
     }
+
+        // Modified --- Vasan 
+    TileWrite* tilewriteunit;
+    TileRead* tilereadunit;
 
 protected:
     Instruction *my_instruction;

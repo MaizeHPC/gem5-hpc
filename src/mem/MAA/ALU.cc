@@ -31,7 +31,7 @@ void ALUUnit::allocate(MAA *_maa, int _my_alu_id, Cycles _ALU_lane_latency, int 
     num_tile_elements = _num_tile_elements;
     my_instruction = nullptr;
 
-    tilewriteunit = new TileWrite(maa, TW_sent_requests, TW_received_responses, my_max, FuncUnitType::ALU);
+    tilewriteunit = new TileWrite(maa, TW_sent_requests, TW_received_responses, my_max, maa->spd->tile_write_counts, FuncUnitType::ALU);
 }
 void ALUUnit::updateLatency(int num_spd_read_data_accesses,
                             int num_spd_read_cond_accesses,

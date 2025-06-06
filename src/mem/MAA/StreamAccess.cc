@@ -38,7 +38,7 @@ void StreamAccessUnit::allocate(int _my_stream_id, unsigned int _num_request_tab
     my_translation_done = false;
     my_instruction = nullptr;
 
-    tilewriteunit = new TileWrite(maa, TW_sent_requests, TW_received_responses, my_size, FuncUnitType::STREAM);
+    tilewriteunit = new TileWrite(maa, TW_sent_requests, TW_received_responses, my_size, maa->spd->tile_write_counts, FuncUnitType::STREAM);
 }
 Cycles StreamAccessUnit::updateLatency(int num_spd_condread_accesses, int num_spd_srcread_accesses, int num_spd_write_accesses, int num_requesttable_accesses) {
     if (num_spd_condread_accesses != 0) {

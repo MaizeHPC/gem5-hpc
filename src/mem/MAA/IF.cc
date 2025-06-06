@@ -284,6 +284,10 @@ Instruction *IF::getReady(FuncUnitType funcUniType, int maa_id) {
             int instr_idx = (rand_base + i) % num_instructions_per_maa;
 
             // remove the service to execute units one by one
+            // || instructions[maa_id][instr_idx].src1Status == Instruction::TileStatus::Service
+            // || instructions[maa_id][instr_idx].src2Status == Instruction::TileStatus::Service
+            // || instructions[maa_id][instr_idx].condStatus == Instruction::TileStatus::Service
+            
             if (valids[maa_id][instr_idx] &&
                 instructions[maa_id][instr_idx].maa_id == maa_id &&
                 instructions[maa_id][instr_idx].state == Instruction::Status::Idle &&

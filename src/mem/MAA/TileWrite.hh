@@ -65,18 +65,20 @@ class TileWrite : public BaseMMU::Translation {
     uint32_t ReadEx_current, write_current;
 
     std::map<Addr, struct TileWriteReqMeta> CAM;
+    
+    std::vector<int>& tile_write_counter;
     FuncUnitType funcUnit;
 
     bool last_elemet_set;
+    
 
 
 
 
     public: 
-        TileWrite(MAA *_maa, int &expected_response, int &received_response, int &my_max, 
-            FuncUnitType funcUnit);
+        TileWrite(MAA *_maa, int &expected_response, int &received_response, int &my_max, std::vector<int>& tile_write_counter, FuncUnitType funcUnit);
 
-        void set(int _TileID, uint32_t _wordsize, ContextID _CID, Addr _PC, 
+        void set(int _TileID,  uint32_t _wordsize, ContextID _CID, Addr _PC, 
                 uint32_t _block_size);
 
         Addr getVirtualAddress(int element_id);

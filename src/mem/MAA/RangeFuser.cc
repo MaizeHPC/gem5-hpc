@@ -28,8 +28,8 @@ void RangeFuserUnit::allocate(unsigned int _num_tile_elements, MAA *_maa, int _m
     maa = _maa;
     my_range_id = _my_range_id;
     my_instruction = nullptr;
-    tilewriteunit_0 = new TileWrite(maa, TW_sent_requests_0, TW_received_responses_0, my_size_0, FuncUnitType::RANGE);
-    tilewriteunit_1 = new TileWrite(maa, TW_sent_requests_1, TW_received_responses_1, my_size_1, FuncUnitType::RANGE);
+    tilewriteunit_0 = new TileWrite(maa, TW_sent_requests_0, TW_received_responses_0, my_size_0, maa->spd->tile_write_counts, FuncUnitType::RANGE);
+    tilewriteunit_1 = new TileWrite(maa, TW_sent_requests_1, TW_received_responses_1, my_size_1, maa->spd->tile_write_counts, FuncUnitType::RANGE);
 
 }
 void RangeFuserUnit::updateLatency(int num_spd_read_accesses,
@@ -126,7 +126,7 @@ void RangeFuserUnit::executeInstruction() {
         TW_sent_requests_1 = 0;
 
         if(my_dst_i_tile != -1){
-            tilewriteunit_0->set(my_dst_i_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size);
+            tilewriteunit_0->set(my_dst_i_tile, my_word_size,  my_instruction->CID, my_instruction->PC, block_size);
             int num_initial_reqs = 100;
             tilewriteunit_0->createAndSendTileExReads(num_initial_reqs);
         }

@@ -120,7 +120,8 @@ void IndirectAccessUnit::allocate(int _my_indirect_id,
     request_table = new RequestTable(maa, num_request_table_addresses, num_request_table_entries_per_address, my_indirect_id, true);
 
 
-    tilewriteunit = new TileWrite(maa, TW_expected_responses, TW_received_responses, my_max, FuncUnitType::INDIRECT);
+    tilewriteunit = new TileWrite(maa, TW_expected_responses, TW_received_responses, my_max, maa->spd->tile_write_counts, FuncUnitType::INDIRECT);
+    tilereadunit = new TileRead(maa, my_max, maa->spd->tile_write_counts, FuncUnitType::INDIRECT);
     // offset_table = new OffsetTable();
     // offset_table->allocate(my_indirect_id, num_tile_elements, maa, false);
 
@@ -503,7 +504,12 @@ void IndirectAccessUnit::fillRequestTable(bool &finished, bool &waitForFinish, b
             num_spd_read_condidx_accesses++;
         }
         if (my_cond_tile == -1 || maa->spd->getData<uint32_t>(my_cond_tile, my_i) != 0) {
-            uint32_t idx = maa->spd->getData<uint32_t>(my_idx_tile, my_i);
+            uint32_t idx ; //  = maa->spd->getData<uint32_t>(my_idx_tile, my_i);
+            bool idx_avail = tilereadunit->getData<uint32_t>(idx);
+            if(!idx_avail){
+                waitForElement = true;
+                break;
+            }
 
             num_spd_read_condidx_accesses++;
             Addr vaddr = my_base_addr + my_word_size * idx;
@@ -715,13 +721,7 @@ void IndirectAccessUnit::executeInstruction() {
         this->sentmyIQueue = {};
         CacheTileWrite = true;
         CacheTileWriteCount = 0;
-        // if(my_dst_tile != -1){
-        //     maa->spd->SPDQueues[my_dst_tile] = {};
-        // }
-
-        if(my_idx_tile != -1){
-            maa->spd->resetQueue(my_idx_tile);
-        }
+  
 
         // Setting the state of the instruction and stream unit
         my_instruction->state = Instruction::Status::Service;
@@ -732,6 +732,10 @@ void IndirectAccessUnit::executeInstruction() {
             tilewriteunit->set(my_dst_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size);
             int num_initial_reqs = 100;
             tilewriteunit->createAndSendTileExReads(num_initial_reqs);
+        }
+
+        if(my_idx_tile != -1){
+            tilereadunit->set(my_idx_tile, 4, my_instruction->CID, my_instruction->PC, block_size); // IDX tile is always 4 bytes
         }
 
         state = Status::Fill;
@@ -885,6 +889,7 @@ void IndirectAccessUnit::executeInstruction() {
         break;
     }
     case Status::Response: {
+
         assert(my_instruction != nullptr);
         DPRINTF(MAAIndirect, "I[%d] %s: responding %s!\n", my_indirect_id, __func__, my_instruction->print());
         DPRINTF(MAATrace, "I[%d] End [%s]\n", my_indirect_id, my_instruction->print());
@@ -898,6 +903,9 @@ void IndirectAccessUnit::executeInstruction() {
         panic_if(LoadsMemAccessingTimeHistory.size() != 0, "I[%d] %s: LoadsMemAccessingTimeHistory is not empty!\n", my_indirect_id, __func__);
         DPRINTF(MAAIndirect, "I[%d] %s: state set to finish for request %s!\n", my_indirect_id, __func__, my_instruction->print());
         my_instruction->state = Instruction::Status::Finish;
+        tilereadunit->unset_ready_to_req();
+
+
         if (my_request_start_tick != 0) {
             (*maa->stats.IND_CyclesRequest[my_indirect_id]) += maa->getTicksToCycles(curTick() - my_request_start_tick);
             my_request_start_tick = 0;
@@ -1013,6 +1021,13 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
 
     if(my_dst_tile != -1) {
         if(tilewriteunit->recv_data(addr, dataptr, is_block_cached)){
+            scheduleNextExecution(true);
+            return true;
+        }
+    }
+
+    if(my_idx_tile != -1) {
+        if(tilereadunit->recv_data(addr, dataptr, is_block_cached)){
             scheduleNextExecution(true);
             return true;
         }

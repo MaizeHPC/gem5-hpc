@@ -35,7 +35,8 @@ void MAA::sendPacket(FuncUnitType funcUnit, uint8_t maaID, PacketPtr pkt, Tick t
                          && pkt->cmd == MemCmd::ReadExReq) {
             DPRINTF(MAAPort, "%s: store to load forwarding for outstanding write packet %s and new read packet %s\n", __func__, my_outstanding_pkt_map[paddr].packet->print(), pkt->print());
             panic_if(my_outstanding_pkt_map[paddr].maaIDs.size() != 1, "%s: multiple units on outstanding write packet %s\n", __func__, my_outstanding_pkt_map[paddr].packet->print());
-            panic_if(my_outstanding_pkt_map[paddr].funcUnits[0] != funcUnit || my_outstanding_pkt_map[paddr].maaIDs[0] != maaID, "%s: outstanding write maaID %d, funcUnit %s, packet %s do not match with new read maaID %d, funcUnit %s, packet %s\n", __func__, my_outstanding_pkt_map[paddr].maaIDs[0], func_unit_names[(uint8_t)my_outstanding_pkt_map[paddr].funcUnits[0]], my_outstanding_pkt_map[paddr].packet->print(), maaID, func_unit_names[(uint8_t)funcUnit], pkt->print());
+            // taking this panic cond  // my_outstanding_pkt_map[paddr].funcUnits[0] != funcUnit ||
+            panic_if(my_outstanding_pkt_map[paddr].maaIDs[0] != maaID, "%s: outstanding write maaID %d, funcUnit %s, packet %s do not match with new read maaID %d, funcUnit %s, packet %s\n", __func__, my_outstanding_pkt_map[paddr].maaIDs[0], func_unit_names[(uint8_t)my_outstanding_pkt_map[paddr].funcUnits[0]], my_outstanding_pkt_map[paddr].packet->print(), maaID, func_unit_names[(uint8_t)funcUnit], pkt->print());
             if (funcUnit == FuncUnitType::INDIRECT) {
                 if (my_outstanding_pkt_map[paddr].cached) {
                     indirectAccessUnits[maaID].cacheReadPacketSent(paddr);
@@ -833,7 +834,13 @@ void MAA::recvTimingResp(PacketPtr pkt, bool cached) {
         }else {
             panic("Invalid func unit type\n");
         }
+
+        // call the read tile units to progress 
+        indirectAccessUnits[tmp.maaIDs[i]].tilereadunit->createAndSendTileExReads(1);
     }
+
+    
+    
 }
 void MAA::scheduleSendCacheEvent(int latency) {
     DPRINTF(MAAPort, "%s: scheduling send cache packet in the next %d cycles!\n", __func__, latency);

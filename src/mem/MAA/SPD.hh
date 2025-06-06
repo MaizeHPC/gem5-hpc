@@ -31,6 +31,7 @@ public:
         "MAX"};
 
     std::vector< std::queue<uint64_t> > SPDQueues;
+    std::vector<int> tile_write_counts;
     uint32_t* queue_rd_ptrs;
 
 protected:

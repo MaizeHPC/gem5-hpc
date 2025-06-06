@@ -19,6 +19,7 @@
 #include "arch/generic/mmu.hh"
 #include "mem/MAA/Tables.hh"
 #include "mem/MAA/IF.hh"
+#include "debug/MAATileRead.hh"
 
 namespace gem5 {
 
@@ -51,7 +52,7 @@ class TileRead : public BaseMMU::Translation {
     uint32_t words_per_block;
 
     
-    int &expected_response, &received_response;
+    int expected_response, received_response;
     int my_max;
 
     const int blockSizeReqs = 400;
@@ -63,18 +64,21 @@ class TileRead : public BaseMMU::Translation {
 
     uint32_t ReadEx_current, write_current;
 
-    std::map<Addr, struct TileWriteReqMeta> CAM;
+    std::map<Addr, struct TileReadReqMeta> CAM;
+    std::vector<int>& tile_write_counter;
     FuncUnitType funcUnit;
 
     bool last_elemet_set;
     int pop_data_counter;
+    bool ready_to_req;
+ 
+    // int &src_data_counter;
 
 
 
 
     public: 
-        TileRead(MAA *_maa, int &expected_response, int &received_response, int &my_max, 
-            FuncUnitType funcUnit);
+        TileRead(MAA *_maa, int &my_max, std::vector<int>& tile_write_counter, FuncUnitType funcUnit);
 
         void set(int _TileID, uint32_t _wordsize, ContextID _CID, Addr _PC, 
                 uint32_t _block_size);
@@ -93,31 +97,37 @@ class TileRead : public BaseMMU::Translation {
 
         template<typename T> bool getData(T& data){
 
-                Addr v_block_addr = getVirtualAddress(pop_data_counter);
+                int blk_counter_id = pop_data_counter/words_per_block *words_per_block;
+                Addr v_block_addr = getVirtualAddress(blk_counter_id);
                 Addr p_block_addr = translatePacket(v_block_addr);
-                struct TileWriteReqMeta twrm;
+                struct TileReadReqMeta twrm;
                 // if the entry is already there
 
                 // check for the last block
-                int last_i = (my_max / words_per_block) * words_per_block;
-                int last_word_count = my_max % words_per_block + 1;
+                // int last_i = (my_max / words_per_block) * words_per_block;
+                // int last_word_count = my_max % words_per_block + 1;
                 if(CAM.find(p_block_addr) != CAM.end()){
                     twrm = CAM[p_block_addr];
                     if(twrm.ReadExRecv) { //  
                         int offset = pop_data_counter % words_per_block;
-                        memcpy(data, &twrm.data[0], wordsize);
+                        data = *(T*)(&twrm.data[offset*wordsize]);
+                        // memcpy((void*) data, &twrm.data[0], wordsize);
                         if(offset == words_per_block-1){
                             CAM.erase(p_block_addr);
                         }
+                        pop_data_counter += 1;
+                        return true;
                     } else {
-                        DPRINTF(MAATileWrite, "T[%d] %s %s i:%d : Data has not been received my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], i, my_max);
-                        break;
+                        DPRINTF(MAATileRead, "TR[%d] %s %s i:%d : Data has not been received my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], pop_data_counter, my_max);
+                        return false;
                     }
                 } else {
-                    DPRINTF(MAATileWrite, "T[%d] %s %s i:%d : No entries in the table my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], i, my_max);
-                    break;
+                    DPRINTF(MAATileRead, "TR[%d] %s %s i:%d : No entries in the table my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], pop_data_counter, my_max);
+                    return false;
                 }
             };
+
+            void unset_ready_to_req();
     };
 
 }
