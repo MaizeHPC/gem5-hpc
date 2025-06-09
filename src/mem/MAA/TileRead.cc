@@ -81,7 +81,9 @@ namespace gem5 {
 
     void TileRead::createAndSendTileExReads(int reqs_count){
         // tile_write_counter[TileID]
-        DPRINTF(MAATileRead, "TR[%d] %s %s: i=%d Write count is %d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)],  ReadEx_current, tile_write_counter[TileID]);
+        if(ready_to_req){
+            DPRINTF(MAATileRead, "TR[%d] %s %s: i=%d Write count is %d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)],  ReadEx_current, tile_write_counter[TileID]);
+        }
         for(int i = ReadEx_current; (i < TileSize) && (i < ReadEx_current + reqs_count*words_per_block) && (i <  tile_write_counter[TileID]) && ready_to_req; i += words_per_block){ // && i < target_tile_ready_counter
             Addr v_block_addr = getVirtualAddress(i);
             DPRINTF(MAATileRead, "TR[%d] %s %s: Virtual Cache Tile Address for write is %x\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)],  v_block_addr);

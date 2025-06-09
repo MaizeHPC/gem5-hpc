@@ -95,7 +95,7 @@ class TileRead : public BaseMMU::Translation {
         void markDelayed() override {};
         void mark_last_element_reached();
 
-        template<typename T> bool getData(T& data){
+        template<typename T> bool getData(T& data, bool remove){
 
                 int blk_counter_id = pop_data_counter/words_per_block *words_per_block;
                 Addr v_block_addr = getVirtualAddress(blk_counter_id);
@@ -112,10 +112,12 @@ class TileRead : public BaseMMU::Translation {
                         int offset = pop_data_counter % words_per_block;
                         data = *(T*)(&twrm.data[offset*wordsize]);
                         // memcpy((void*) data, &twrm.data[0], wordsize);
-                        if(offset == words_per_block-1){
+                        if(offset == words_per_block-1 && remove){
                             CAM.erase(p_block_addr);
                         }
-                        pop_data_counter += 1;
+                        if(remove){
+                            pop_data_counter += 1;
+                        }
                         return true;
                     } else {
                         DPRINTF(MAATileRead, "TR[%d] %s %s i:%d : Data has not been received my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], pop_data_counter, my_max);

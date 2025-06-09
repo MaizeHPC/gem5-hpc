@@ -49,6 +49,10 @@ IndirectAccessUnit::~IndirectAccessUnit() {
 
     assert(tilewriteunit != nullptr);
     delete [] tilewriteunit;
+    assert(tilereadunitIdx != nullptr);
+    delete [] tilereadunitIdx;
+    assert(tilereadunitSrc != nullptr);
+    delete [] tilereadunitSrc;
 
     // assert(RT_slice_org != nullptr);
     // for (int i = 0; i < num_RT_configs; i++) {
@@ -121,7 +125,8 @@ void IndirectAccessUnit::allocate(int _my_indirect_id,
 
 
     tilewriteunit = new TileWrite(maa, TW_expected_responses, TW_received_responses, my_max, maa->spd->tile_write_counts, FuncUnitType::INDIRECT);
-    tilereadunit = new TileRead(maa, my_max, maa->spd->tile_write_counts, FuncUnitType::INDIRECT);
+    tilereadunitIdx = new TileRead(maa, my_max, maa->spd->tile_write_counts, FuncUnitType::INDIRECT);
+    tilereadunitSrc = new TileRead(maa, my_max, maa->spd->tile_write_counts, FuncUnitType::INDIRECT);
     // offset_table = new OffsetTable();
     // offset_table->allocate(my_indirect_id, num_tile_elements, maa, false);
 
@@ -505,10 +510,32 @@ void IndirectAccessUnit::fillRequestTable(bool &finished, bool &waitForFinish, b
         }
         if (my_cond_tile == -1 || maa->spd->getData<uint32_t>(my_cond_tile, my_i) != 0) {
             uint32_t idx ; //  = maa->spd->getData<uint32_t>(my_idx_tile, my_i);
-            bool idx_avail = tilereadunit->getData<uint32_t>(idx);
-            if(!idx_avail){
+            uint32_t data_32;
+            uint64_t data_64;
+            bool src_avail;
+
+            if(my_src_tile != -1){
+                if(my_word_size ==4){
+                    src_avail = tilereadunitSrc->getData<uint32_t>(data_32, false);
+                } else {
+                    src_avail = tilereadunitSrc->getData<uint64_t>(data_64, false);
+                }
+            }
+
+            bool idx_avail = tilereadunitIdx->getData<uint32_t>(idx, false);
+            if(!idx_avail || !src_avail){
                 waitForElement = true;
                 break;
+            } else {
+                // remove the elements 
+                tilereadunitIdx->getData<uint32_t>(idx, true);
+                if(my_src_tile != -1){
+                    if(my_word_size ==4){
+                        tilereadunitSrc->getData<uint32_t>(data_32, true);
+                    } else {
+                        tilereadunitSrc->getData<uint64_t>(data_64, true);
+                    }
+                }
             }
 
             num_spd_read_condidx_accesses++;
@@ -535,11 +562,11 @@ void IndirectAccessUnit::fillRequestTable(bool &finished, bool &waitForFinish, b
             bool inserted;
             if(my_src_tile != -1){
                 if(my_word_size ==4){
-                    uint32_t data = maa->spd->getData<uint32_t>(my_src_tile, my_i);
-                    inserted = request_table->add_entry(my_i, block_paddr, wid, data);
+                    // uint32_t data = maa->spd->getData<uint32_t>(my_src_tile, my_i);
+                    inserted = request_table->add_entry(my_i, block_paddr, wid, data_32);
                 } else {
-                    uint64_t data = maa->spd->getData<uint64_t>(my_src_tile, my_i);
-                    inserted = request_table->add_entry(my_i, block_paddr, wid, data);
+                    // uint64_t data = maa->spd->getData<uint64_t>(my_src_tile, my_i);
+                    inserted = request_table->add_entry(my_i, block_paddr, wid, data_64);
                 }
 
             } else {
@@ -735,7 +762,11 @@ void IndirectAccessUnit::executeInstruction() {
         }
 
         if(my_idx_tile != -1){
-            tilereadunit->set(my_idx_tile, 4, my_instruction->CID, my_instruction->PC, block_size); // IDX tile is always 4 bytes
+            tilereadunitIdx->set(my_idx_tile, 4, my_instruction->CID, my_instruction->PC, block_size); // IDX tile is always 4 bytes
+        }
+
+        if(my_src_tile != -1){
+            tilereadunitSrc->set(my_src_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size); // IDX tile is always 4 bytes
         }
 
         state = Status::Fill;
@@ -903,7 +934,8 @@ void IndirectAccessUnit::executeInstruction() {
         panic_if(LoadsMemAccessingTimeHistory.size() != 0, "I[%d] %s: LoadsMemAccessingTimeHistory is not empty!\n", my_indirect_id, __func__);
         DPRINTF(MAAIndirect, "I[%d] %s: state set to finish for request %s!\n", my_indirect_id, __func__, my_instruction->print());
         my_instruction->state = Instruction::Status::Finish;
-        tilereadunit->unset_ready_to_req();
+        tilereadunitIdx->unset_ready_to_req();
+        tilereadunitSrc->unset_ready_to_req();
 
 
         if (my_request_start_tick != 0) {
@@ -952,7 +984,8 @@ void IndirectAccessUnit::createReadPacket(Addr addr, int latency) {
     }
     read_pkt->headerDelay = read_pkt->payloadDelay = 0;
     read_pkt->allocate();
-    maa->sendPacket(FuncUnitType::INDIRECT, my_indirect_id, read_pkt, maa->getClockEdge(Cycles(latency)), my_force_cache);
+    // forcing to send through cache
+    maa->sendPacket(FuncUnitType::INDIRECT, my_indirect_id, read_pkt, maa->getClockEdge(Cycles(latency)), true);
     DPRINTF(MAAIndirect, "I[%d] %s: created %s for mem\n", my_indirect_id, __func__, read_pkt->print());
 }
 
@@ -1027,7 +1060,14 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
     }
 
     if(my_idx_tile != -1) {
-        if(tilereadunit->recv_data(addr, dataptr, is_block_cached)){
+        if(tilereadunitIdx->recv_data(addr, dataptr, is_block_cached)){
+            scheduleNextExecution(true);
+            return true;
+        }
+    }
+
+    if(my_src_tile != -1) {
+        if(tilereadunitSrc->recv_data(addr, dataptr, is_block_cached)){
             scheduleNextExecution(true);
             return true;
         }
@@ -1445,7 +1485,8 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
                 DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] = %f!\n", my_indirect_id, __func__, i, write_pkt->getPtr<double>()[i]);
         }
         DPRINTF(MAAIndirect, "I[%d] %s: created %s to send in %d cycles\n", my_indirect_id, __func__, write_pkt->print(), total_latency);
-        maa->sendPacket(FuncUnitType::INDIRECT, my_indirect_id, write_pkt, maa->getClockEdge(total_latency), my_force_cache);
+        // forcing through cache 
+        maa->sendPacket(FuncUnitType::INDIRECT, my_indirect_id, write_pkt, maa->getClockEdge(total_latency), true);
         (*maa->stats.IND_StoresMemAccessing[my_indirect_id])++;
     } else  {
         my_received_responses++;

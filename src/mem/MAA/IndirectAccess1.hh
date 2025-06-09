@@ -150,7 +150,8 @@ public:
 
         // Modified --- Vasan 
     TileWrite* tilewriteunit;
-    TileRead* tilereadunit;
+    TileRead* tilereadunitIdx;
+    TileRead* tilereadunitSrc;
 
 protected:
     Instruction *my_instruction;

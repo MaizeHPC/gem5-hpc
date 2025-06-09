@@ -836,7 +836,8 @@ void MAA::recvTimingResp(PacketPtr pkt, bool cached) {
         }
 
         // call the read tile units to progress 
-        indirectAccessUnits[tmp.maaIDs[i]].tilereadunit->createAndSendTileExReads(1);
+        indirectAccessUnits[tmp.maaIDs[i]].tilereadunitIdx->createAndSendTileExReads(1);
+        indirectAccessUnits[tmp.maaIDs[i]].tilereadunitSrc->createAndSendTileExReads(1);
     }
 
     
