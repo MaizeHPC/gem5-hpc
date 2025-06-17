@@ -82,11 +82,11 @@ namespace gem5 {
     void TileRead::createAndSendTileExReads(int reqs_count){
         // tile_write_counter[TileID]
         if(ready_to_req){
-            DPRINTF(MAATileRead, "TR[%d] %s %s: i=%d Write count is %d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)],  ReadEx_current, tile_write_counter[TileID]);
+            DPRINTF(MAATileRead, "TR[%d] %s %s: TileID:%d i=%d Write count is %d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, ReadEx_current, tile_write_counter[TileID]);
         }
         for(int i = ReadEx_current; (i < TileSize) && (i < ReadEx_current + reqs_count*words_per_block) && (i <  tile_write_counter[TileID]) && ready_to_req; i += words_per_block){ // && i < target_tile_ready_counter
             Addr v_block_addr = getVirtualAddress(i);
-            DPRINTF(MAATileRead, "TR[%d] %s %s: Virtual Cache Tile Address for write is %x\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)],  v_block_addr);
+            DPRINTF(MAATileRead, "TR[%d] %s %s: TileID:%d,  Virtual Cache Tile Address for write is %x\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID,  v_block_addr);
             Addr p_block_addr = translatePacket(v_block_addr);
 
             RequestPtr readex_req = std::make_shared<Request>(p_block_addr, block_size, flags, maa->requestorId);
@@ -114,7 +114,7 @@ namespace gem5 {
 
     bool TileRead::recv_data(const Addr addr, uint8_t *dataptr, bool is_block_cached){
         bool ret = false;
-        DPRINTF(MAATileRead, "TR[%d] %s %s: received response for addr: %x \n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], addr);
+        DPRINTF(MAATileRead, "TR[%d] %s %s: TileID:%d received response for addr: %x \n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, addr);
         if(CAM.find(addr) != CAM.end()){
             received_response++;
             DPRINTF(MAATileRead, "TR[%d] %s: found the entry on CAM for addr: %x \n", my_indirect_id, __func__, addr);
@@ -133,7 +133,7 @@ namespace gem5 {
             } else {
                 panic("Unexpected packet has been received\n");
             }
-        }
+        } 
         return ret;
     }
 

@@ -32,6 +32,9 @@ void ALUUnit::allocate(MAA *_maa, int _my_alu_id, Cycles _ALU_lane_latency, int 
     my_instruction = nullptr;
 
     tilewriteunit = new TileWrite(maa, TW_sent_requests, TW_received_responses, my_max, maa->spd->tile_write_counts, FuncUnitType::ALU);
+
+    tilereadunitSrc1 = new TileRead(maa, my_max, maa->spd->tile_write_counts, FuncUnitType::ALU);
+    tilereadunitSrc2 = new TileRead(maa, my_max, maa->spd->tile_write_counts, FuncUnitType::ALU);
 }
 void ALUUnit::updateLatency(int num_spd_read_data_accesses,
                             int num_spd_read_cond_accesses,
@@ -179,7 +182,8 @@ void ALUUnit::executeInstruction() {
         } else {
             (*maa->stats.ALU_NumInstsCompare[my_alu_id])++;
         }
-        my_output_words_per_cl = 64 / my_output_word_size;
+        const int BlkSize = 64;
+        my_output_words_per_cl = BlkSize / my_output_word_size;
         my_SPD_read_finish_tick = curTick();
         my_SPD_write_finish_tick = curTick();
         my_ALU_finish_tick = curTick();
@@ -199,6 +203,14 @@ void ALUUnit::executeInstruction() {
                             my_instruction->PC, my_output_word_size*my_output_words_per_cl);
             int num_initial_reqs = 100;
             tilewriteunit->createAndSendTileExReads(num_initial_reqs);
+        }
+
+        if(my_src1_tile != -1){
+            tilereadunitSrc1->set(my_src1_tile, my_input_word_size, my_instruction->CID, my_instruction->PC, BlkSize); // IDX tile is always 4 bytes
+        }
+
+        if(my_src2_tile != -1 && my_instruction->opcode == Instruction::OpcodeType::ALU_VECTOR){
+            tilereadunitSrc2->set(my_src2_tile, my_input_word_size, my_instruction->CID, my_instruction->PC, BlkSize); // IDX tile is always 4 bytes
         }
 
 
@@ -266,31 +278,56 @@ void ALUUnit::executeInstruction() {
             DPRINTF(MAAALU, "A[%d] %s: my_max=%d\n", my_alu_id, __func__, my_max);
 
             bool cond_ready = my_cond_tile == -1 || maa->spd->getElementFinished(my_cond_tile, my_i, 4, (uint8_t)FuncUnitType::ALU, my_alu_id);
-            bool src1_ready = cond_ready && maa->spd->getElementFinished(my_src1_tile, my_i, my_input_word_size, (uint8_t)FuncUnitType::ALU, my_alu_id);
-            bool src2_ready = src1_ready && (my_instruction->opcode != Instruction::OpcodeType::ALU_VECTOR ||
-                                             maa->spd->getElementFinished(my_src2_tile, my_i, my_input_word_size, (uint8_t)FuncUnitType::ALU, my_alu_id));
+            // bool src1_ready = cond_ready && maa->spd->getElementFinished(my_src1_tile, my_i, my_input_word_size, (uint8_t)FuncUnitType::ALU, my_alu_id);
+            // bool src2_ready = src1_ready && (my_instruction->opcode != Instruction::OpcodeType::ALU_VECTOR ||
+            //                                  maa->spd->getElementFinished(my_src2_tile, my_i, my_input_word_size, (uint8_t)FuncUnitType::ALU, my_alu_id));
+
+            bool src1_readyTR, src2_readyTR;
+            uint32_t data1_32, data2_32;
+            uint64_t data1_64, data2_64;
+            if(my_input_word_size == 4){
+                src1_readyTR = tilereadunitSrc1->getData<uint32_t>(data1_32, false);
+                if(my_instruction->opcode == Instruction::OpcodeType::ALU_VECTOR) {
+                    src2_readyTR = tilereadunitSrc2->getData<uint32_t>(data2_32, false);
+                } else {
+                    src2_readyTR = true; 
+                }
+            } else if(my_input_word_size == 8) {
+                src1_readyTR = tilereadunitSrc1->getData<uint64_t>(data1_64, false);
+                if(my_instruction->opcode == Instruction::OpcodeType::ALU_VECTOR) {
+                    src2_readyTR = tilereadunitSrc2->getData<uint64_t>(data2_64, false);
+                } else {
+                    src2_readyTR = true;
+                }
+            }
+
+
             if (cond_ready == false) {
                 DPRINTF(MAAALU, "A[%d] %s: cond tile[%d] element[%d] not ready, returning!\n", my_alu_id, __func__, my_cond_tile, my_i);
-            } else if (src1_ready == false) {
+            } else if (src1_readyTR == false) {
                 DPRINTF(MAAALU, "A[%d] %s: src1 tile[%d] element[%d] not ready, returning!\n", my_alu_id, __func__, my_src1_tile, my_i);
-            } else if (src2_ready == false) {
+            } else if (src2_readyTR == false) {
                 DPRINTF(MAAALU, "A[%d] %s: src2 tile[%d] element[%d] not ready, returning!\n", my_alu_id, __func__, my_src2_tile, my_i);
             }
-            if (cond_ready == false || src1_ready == false || src2_ready == false) {
+            if (cond_ready == false || src1_readyTR == false || src2_readyTR == false) {
                 updateLatency(num_spd_read_data_accesses, num_spd_read_cond_accesses, num_spd_write_accesses, num_alu_accesses);
                 return;
             }
+
+
             if (my_cond_tile == -1 || maa->spd->getData<uint32_t>(my_cond_tile, my_i) != 0) {
                 num_alu_accesses++;
                 switch (my_instruction->datatype) {
                 case Instruction::DataType::UINT32_TYPE: {
-                    uint32_t src1 = maa->spd->getData<uint32_t>(my_src1_tile, my_i);
+                    uint32_t src1 = 0 ; //= maa->spd->getData<uint32_t>(my_src1_tile, my_i);
+                    tilereadunitSrc1->getData<uint32_t>(src1, true);
                     num_spd_read_data_accesses++;
-                    uint32_t src2;
+                    uint32_t src2 = 0;
                     if (my_instruction->opcode == Instruction::OpcodeType::ALU_SCALAR) {
                         src2 = maa->rf->getData<uint32_t>(my_instruction->src1RegID);
                     } else if (my_instruction->opcode == Instruction::OpcodeType::ALU_VECTOR) {
-                        src2 = maa->spd->getData<uint32_t>(my_src2_tile, my_i);
+                        tilereadunitSrc2->getData<uint32_t>(src2, true);
+                        // src2 = maa->spd->getData<uint32_t>(my_src2_tile, my_i);
                         num_spd_read_data_accesses++;
                     } else {
                         src2 = my_red_u32;
@@ -377,13 +414,15 @@ void ALUUnit::executeInstruction() {
                     break;
                 }
                 case Instruction::DataType::INT32_TYPE: {
-                    int32_t src1 = maa->spd->getData<int32_t>(my_src1_tile, my_i);
+                    int32_t src1 = 0; //= maa->spd->getData<int32_t>(my_src1_tile, my_i);
+                    tilereadunitSrc1->getData<int32_t>(src1, true);
                     num_spd_read_data_accesses++;
-                    int32_t src2;
+                    int32_t src2 = 0;
                     if (my_instruction->opcode == Instruction::OpcodeType::ALU_SCALAR) {
                         src2 = maa->rf->getData<int32_t>(my_instruction->src1RegID);
                     } else if (my_instruction->opcode == Instruction::OpcodeType::ALU_VECTOR) {
-                        src2 = maa->spd->getData<int32_t>(my_src2_tile, my_i);
+                        // src2 = maa->spd->getData<int32_t>(my_src2_tile, my_i);
+                        tilereadunitSrc2->getData<int32_t>(src2, true);
                         num_spd_read_data_accesses++;
                     } else {
                         src2 = my_red_i32;
@@ -470,13 +509,15 @@ void ALUUnit::executeInstruction() {
                     break;
                 }
                 case Instruction::DataType::FLOAT32_TYPE: {
-                    float src1 = maa->spd->getData<float>(my_src1_tile, my_i);
+                    float src1 = 0; //= maa->spd->getData<float>(my_src1_tile, my_i);
+                    tilereadunitSrc1->getData<float>(src1, true);
                     num_spd_read_data_accesses++;
-                    float src2;
+                    float src2 = 0;
                     if (my_instruction->opcode == Instruction::OpcodeType::ALU_SCALAR) {
                         src2 = maa->rf->getData<float>(my_instruction->src1RegID);
                     } else if (my_instruction->opcode == Instruction::OpcodeType::ALU_VECTOR) {
-                        src2 = maa->spd->getData<float>(my_src2_tile, my_i);
+                        // src2 = maa->spd->getData<float>(my_src2_tile, my_i);
+                        tilereadunitSrc2->getData<float>(src2, true);
                         num_spd_read_data_accesses++;
                     } else {
                         src2 = my_red_f32;
@@ -548,13 +589,15 @@ void ALUUnit::executeInstruction() {
                     break;
                 }
                 case Instruction::DataType::UINT64_TYPE: {
-                    uint64_t src1 = maa->spd->getData<uint64_t>(my_src1_tile, my_i);
+                    uint64_t src1 = 0;// = maa->spd->getData<uint64_t>(my_src1_tile, my_i);
+                    tilereadunitSrc1->getData<uint64_t>(src1, true);
                     num_spd_read_data_accesses++;
-                    uint64_t src2;
+                    uint64_t src2 = 0;
                     if (my_instruction->opcode == Instruction::OpcodeType::ALU_SCALAR) {
                         src2 = maa->rf->getData<uint64_t>(my_instruction->src1RegID);
                     } else if (my_instruction->opcode == Instruction::OpcodeType::ALU_VECTOR) {
-                        src2 = maa->spd->getData<uint64_t>(my_src2_tile, my_i);
+                        // src2 = maa->spd->getData<uint64_t>(my_src2_tile, my_i);
+                        tilereadunitSrc2->getData<uint64_t>(src2, true);
                         num_spd_read_data_accesses++;
                     } else {
                         src2 = my_red_u64;
@@ -641,13 +684,15 @@ void ALUUnit::executeInstruction() {
                     break;
                 }
                 case Instruction::DataType::INT64_TYPE: {
-                    int64_t src1 = maa->spd->getData<int64_t>(my_src1_tile, my_i);
+                    int64_t src1 = 0; // = maa->spd->getData<int64_t>(my_src1_tile, my_i);
+                    tilereadunitSrc1->getData<int64_t>(src1, true);
                     num_spd_read_data_accesses++;
-                    int64_t src2;
+                    int64_t src2 = 0;
                     if (my_instruction->opcode == Instruction::OpcodeType::ALU_SCALAR) {
                         src2 = maa->rf->getData<int64_t>(my_instruction->src1RegID);
                     } else if (my_instruction->opcode == Instruction::OpcodeType::ALU_VECTOR) {
-                        src2 = maa->spd->getData<int64_t>(my_src2_tile, my_i);
+                        // src2 = maa->spd->getData<int64_t>(my_src2_tile, my_i);
+                        tilereadunitSrc2->getData<int64_t>(src2, true);
                         num_spd_read_data_accesses++;
                     } else {
                         src2 = my_red_i64;
@@ -734,13 +779,15 @@ void ALUUnit::executeInstruction() {
                     break;
                 }
                 case Instruction::DataType::FLOAT64_TYPE: {
-                    double src1 = maa->spd->getData<double>(my_src1_tile, my_i);
+                    double src1 = 0; // = maa->spd->getData<double>(my_src1_tile, my_i);
+                    tilereadunitSrc1->getData<double>(src1, true);
                     num_spd_read_data_accesses++;
-                    double src2;
+                    double src2 = 0;
                     if (my_instruction->opcode == Instruction::OpcodeType::ALU_SCALAR) {
                         src2 = maa->rf->getData<double>(my_instruction->src1RegID);
                     } else if (my_instruction->opcode == Instruction::OpcodeType::ALU_VECTOR) {
-                        src2 = maa->spd->getData<double>(my_src2_tile, my_i);
+                        // src2 = maa->spd->getData<double>(my_src2_tile, my_i);
+                        tilereadunitSrc2->getData<double>(src2, true);
                         num_spd_read_data_accesses++;
                     } else {
                         src2 = my_red_f64;
@@ -859,6 +906,21 @@ void ALUUnit::executeInstruction() {
                         assert(false);
                     }
                 }
+
+                // consume input data
+                uint32_t data1_32, data2_32;
+                uint64_t data1_64, data2_64;
+                if(my_input_word_size == 4){
+                    tilereadunitSrc1->getData<uint32_t>(data1_32, true);
+                    if(my_instruction->opcode == Instruction::OpcodeType::ALU_VECTOR) {
+                        tilereadunitSrc2->getData<uint32_t>(data2_32, true);
+                    } 
+                } else if(my_input_word_size == 8) {
+                    tilereadunitSrc1->getData<uint64_t>(data1_64, true);
+                    if(my_instruction->opcode == Instruction::OpcodeType::ALU_VECTOR) {
+                        tilereadunitSrc2->getData<uint64_t>(data2_64, true);
+                    } 
+                }
             }
             my_i++;
         }
@@ -878,6 +940,10 @@ void ALUUnit::executeInstruction() {
         break;
     }
     case Status::Finish: {
+
+        tilereadunitSrc1->unset_ready_to_req();
+        tilereadunitSrc2->unset_ready_to_req();
+
         DPRINTF(MAAALU, "A[%d] %s: finishing %s!\n", my_alu_id, __func__, my_instruction->print());
         DPRINTF(MAATrace, "A[%d] End [%s]\n", my_alu_id, my_instruction->print());
         my_instruction->state = Instruction::Status::Finish;
@@ -949,11 +1015,23 @@ void ALUUnit::scheduleExecuteInstructionEvent(int latency) {
 }
 
 bool ALUUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached){
-    bool ret = tilewriteunit->recv_data(addr, dataptr, cached);
+    bool ret1 = tilewriteunit->recv_data(addr, dataptr, cached);
     if(TW_sent_requests == TW_received_responses && TW_sent_requests != 0){
         scheduleNextExecution(true);
     }
-    return ret;
+
+    bool ret2 = tilereadunitSrc1->recv_data(addr, dataptr, cached);
+    bool ret3 = tilereadunitSrc2->recv_data(addr, dataptr, cached);
+    if(ret2 || ret3){
+        scheduleNextExecution(true);
+    }
+    // should only one return 
+    
+    assert(!(ret1 && ret2));
+    assert(!(ret2 && ret3));
+    assert(!(ret1 && ret3));
+
+    return ret1 || ret2 || ret3;
 }
 
 void ALUUnit::cacheReadPacketSent(const Addr addr){}

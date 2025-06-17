@@ -54,6 +54,8 @@ void MAA::sendPacket(FuncUnitType funcUnit, uint8_t maaID, PacketPtr pkt, Tick t
                     aluUnits[maaID].memReadPacketSent(paddr);
                 }
                 panic_if(aluUnits[maaID].recvData(paddr, my_outstanding_pkt_map[paddr].packet->getPtr<uint8_t>(), my_outstanding_pkt_map[paddr].cached) == false, "%s: received %s but rejected from indirectAccessUnits[%d]\n", __func__, my_outstanding_pkt_map[paddr].packet->print(), maaID);
+            }  else if (funcUnit == FuncUnitType::RANGE) {
+                panic_if(rangeUnits[maaID].recvData(paddr, my_outstanding_pkt_map[paddr].packet->getPtr<uint8_t>(), my_outstanding_pkt_map[paddr].cached) == false, "%s: received %s but rejected from indirectAccessUnits[%d]\n", __func__, my_outstanding_pkt_map[paddr].packet->print(), maaID);
             } else {
                 panic("Invalid func unit type\n");
             }
@@ -174,16 +176,17 @@ void MAA::sendPacket(FuncUnitType funcUnit, uint8_t maaID, PacketPtr pkt, Tick t
                     panic("Invalid packet type\n");
                 }
             } else {
-                send_mem = true;
-                if (pkt->isRead()) {
-                    my_outstanding_stream_mem_read_pkts[core_id].insert(my_outstanding_pkt_map[paddr]);
-                    DPRINTF(MAAPort, "%s: inserting my_outstanding_stream_mem_read_pkts[%s\n", __func__, core_id);
-                } else if (pkt->isWrite()) {
-                    my_outstanding_stream_mem_write_pkts[core_id].insert(my_outstanding_pkt_map[paddr]);
-                    DPRINTF(MAAPort, "%s: inserting my_outstanding_stream_mem_write_pkts[%s\n", __func__, core_id);
-                } else {
-                    panic("Invalid packet type\n");
-                }
+                panic("all stream packets should send through cache\n\n");
+                // send_mem = true;
+                // if (pkt->isRead()) {
+                //     my_outstanding_stream_mem_read_pkts[core_id].insert(my_outstanding_pkt_map[paddr]);
+                //     DPRINTF(MAAPort, "%s: inserting my_outstanding_stream_mem_read_pkts[%s\n", __func__, core_id);
+                // } else if (pkt->isWrite()) {
+                //     my_outstanding_stream_mem_write_pkts[core_id].insert(my_outstanding_pkt_map[paddr]);
+                //     DPRINTF(MAAPort, "%s: inserting my_outstanding_stream_mem_write_pkts[%s\n", __func__, core_id);
+                // } else {
+                //     panic("Invalid packet type\n");
+                // }
             }
         } else if (funcUnit == FuncUnitType::ALU) {
             my_num_outstanding_alu_pkts[maaID]++;
@@ -291,6 +294,7 @@ bool MAA::scheduleNextSendCache() {
         if (my_outstanding_indirect_cache_read_pkts[core_id].empty() == false) {
             if (return_val == false) {
                 tick = my_outstanding_indirect_cache_read_pkts[core_id].begin()->tick;
+                DPRINTF(MAAPort, "%s: my_outstanding_indirect_cache_read_pkts.size %d\n", __func__, my_outstanding_indirect_cache_read_pkts[core_id].size());
                 return_val = true;
             } else {
                 tick = std::min(tick, my_outstanding_indirect_cache_read_pkts[core_id].begin()->tick);
@@ -299,6 +303,7 @@ bool MAA::scheduleNextSendCache() {
         if (my_outstanding_indirect_cache_write_pkts[core_id].empty() == false) {
             if (return_val == false) {
                 tick = my_outstanding_indirect_cache_write_pkts[core_id].begin()->tick;
+                DPRINTF(MAAPort, "%s: my_outstanding_indirect_cache_write_pkts.size %d\n", __func__, my_outstanding_indirect_cache_write_pkts[core_id].size());
                 return_val = true;
             } else {
                 tick = std::min(tick, my_outstanding_indirect_cache_write_pkts[core_id].begin()->tick);
@@ -307,6 +312,7 @@ bool MAA::scheduleNextSendCache() {
         if (my_outstanding_stream_cache_read_pkts[core_id].empty() == false) {
             if (return_val == false) {
                 tick = my_outstanding_stream_cache_read_pkts[core_id].begin()->tick;
+                DPRINTF(MAAPort, "%s: my_outstanding_stream_cache_read_pkts.size %d\n", __func__, my_outstanding_stream_cache_read_pkts[core_id].size());
                 return_val = true;
             } else {
                 tick = std::min(tick, my_outstanding_stream_cache_read_pkts[core_id].begin()->tick);
@@ -315,6 +321,7 @@ bool MAA::scheduleNextSendCache() {
         if (my_outstanding_stream_cache_write_pkts[core_id].empty() == false) {
             if (return_val == false) {
                 tick = my_outstanding_stream_cache_write_pkts[core_id].begin()->tick;
+                DPRINTF(MAAPort, "%s: my_outstanding_stream_cache_write_pkts.size %d\n", __func__, my_outstanding_stream_cache_write_pkts[core_id].size());
                 return_val = true;
             } else {
                 tick = std::min(tick, my_outstanding_stream_cache_write_pkts[core_id].begin()->tick);
@@ -324,6 +331,7 @@ bool MAA::scheduleNextSendCache() {
         if (my_outstanding_alu_cache_read_pkts[core_id].empty() == false) {
             if (return_val == false) {
                 tick = my_outstanding_alu_cache_read_pkts[core_id].begin()->tick;
+                DPRINTF(MAAPort, "%s: my_outstanding_alu_cache_read_pkts.size %d\n", __func__, my_outstanding_alu_cache_read_pkts[core_id].size());
                 return_val = true;
             } else {
                 tick = std::min(tick, my_outstanding_alu_cache_read_pkts[core_id].begin()->tick);
@@ -333,6 +341,7 @@ bool MAA::scheduleNextSendCache() {
         if (my_outstanding_alu_cache_write_pkts[core_id].empty() == false) {
             if (return_val == false) {
                 tick = my_outstanding_alu_cache_write_pkts[core_id].begin()->tick;
+                DPRINTF(MAAPort, "%s: my_outstanding_alu_cache_write_pkts.size %d\n", __func__, my_outstanding_alu_cache_write_pkts[core_id].size());
                 return_val = true;
             } else {
                 tick = std::min(tick, my_outstanding_alu_cache_write_pkts[core_id].begin()->tick);
@@ -342,6 +351,7 @@ bool MAA::scheduleNextSendCache() {
         if (my_outstanding_rangefuser_cache_read_pkts[core_id].empty() == false) {
             if (return_val == false) {
                 tick = my_outstanding_rangefuser_cache_read_pkts[core_id].begin()->tick;
+                DPRINTF(MAAPort, "%s: my_outstanding_rangefuser_cache_read_pkts.size %d\n", __func__, my_outstanding_rangefuser_cache_read_pkts[core_id].size());
                 return_val = true;
             } else {
                 tick = std::min(tick, my_outstanding_rangefuser_cache_read_pkts[core_id].begin()->tick);
@@ -351,6 +361,7 @@ bool MAA::scheduleNextSendCache() {
         if (my_outstanding_rangefuser_cache_write_pkts[core_id].empty() == false) {
             if (return_val == false) {
                 tick = my_outstanding_rangefuser_cache_write_pkts[core_id].begin()->tick;
+                DPRINTF(MAAPort, "%s: my_outstanding_rangefuser_cache_write_pkts.size %d\n", __func__, my_outstanding_rangefuser_cache_write_pkts[core_id].size());
                 return_val = true;
             } else {
                 tick = std::min(tick, my_outstanding_rangefuser_cache_write_pkts[core_id].begin()->tick);
@@ -362,6 +373,7 @@ bool MAA::scheduleNextSendCache() {
             if (my_outstanding_stream_mem_read_pkts[core_id].empty() == false) {
                 if (return_val == false) {
                     tick = my_outstanding_stream_mem_read_pkts[core_id].begin()->tick;
+                    DPRINTF(MAAPort, "%s: my_outstanding_stream_mem_read_pkts.size %d\n", __func__, my_outstanding_stream_mem_read_pkts[core_id].size());
                     return_val = true;
                 } else {
                     tick = std::min(tick, my_outstanding_stream_mem_read_pkts[core_id].begin()->tick);
@@ -370,6 +382,7 @@ bool MAA::scheduleNextSendCache() {
             if (my_outstanding_stream_mem_write_pkts[core_id].empty() == false) {
                 if (return_val == false) {
                     tick = my_outstanding_stream_mem_write_pkts[core_id].begin()->tick;
+                    DPRINTF(MAAPort, "%s: my_outstanding_stream_mem_write_pkts.size %d\n", __func__, my_outstanding_stream_mem_write_pkts[core_id].size());
                     return_val = true;
                 } else {
                     tick = std::min(tick, my_outstanding_stream_mem_write_pkts[core_id].begin()->tick);
@@ -378,6 +391,8 @@ bool MAA::scheduleNextSendCache() {
         }
     }
     if (return_val) {
+        DPRINTF(MAAPort, "%s: found some outstanding transaction to send\n", __func__);
+        
         Cycles latency = Cycles(1);
         if (tick > curTick()) {
             latency = getTicksToCycles(tick - curTick());
@@ -497,6 +512,8 @@ bool MAA::sendOutstandingCachePacket() {
     bool packet_remaining = false;
     bool all_indirect_empty = allIndirectEmpty();
     bool all_channel_blocked = true;
+    bool all_packet_queue_empty = true;
+    DPRINTF(MAAPort, "%s: Trying to send Outstanding cache packets\n", __func__);
     for (int core = 0; core < num_cores; core++) {
         if (cache_bus_blocked[core])
             continue;
@@ -507,6 +524,7 @@ bool MAA::sendOutstandingCachePacket() {
         // ----------------- INDIRECT ---------------------------------
         // -----------------------------------------------------------
         for (auto it = my_outstanding_indirect_cache_write_pkts[core].begin(); it != my_outstanding_indirect_cache_write_pkts[core].end();) {
+            all_packet_queue_empty = false;
             if (it->tick > curTick()) {
                 DPRINTF(MAAPort, "%s: waiting for %d cycles to send %s to cache\n", __func__, getTicksToCycles(it->tick - curTick()), it->packet->print());
                 packet_remaining = true;
@@ -540,6 +558,7 @@ bool MAA::sendOutstandingCachePacket() {
             all_channel_blocked = false;
 
         for (auto it = my_outstanding_indirect_cache_read_pkts[core].begin(); it != my_outstanding_indirect_cache_read_pkts[core].end();) {
+            all_packet_queue_empty = false;
             if (it->tick > curTick()) {
                 DPRINTF(MAAPort, "%s: waiting for %d cycles to send %s to cache\n", __func__, getTicksToCycles(it->tick - curTick()), it->packet->print());
                 packet_remaining = true;
@@ -581,6 +600,7 @@ bool MAA::sendOutstandingCachePacket() {
             all_channel_blocked = false;
 
         for (auto it = my_outstanding_stream_cache_write_pkts[core].begin(); it != my_outstanding_stream_cache_write_pkts[core].end();) {
+            all_packet_queue_empty = false;
             if (it->tick > curTick()) {
                 DPRINTF(MAAPort, "%s: waiting for %d cycles to send %s to cache\n", __func__, getTicksToCycles(it->tick - curTick()), it->packet->print());
                 packet_remaining = true;
@@ -618,6 +638,7 @@ bool MAA::sendOutstandingCachePacket() {
             all_channel_blocked = false;
 
         for (auto it = my_outstanding_stream_cache_read_pkts[core].begin(); it != my_outstanding_stream_cache_read_pkts[core].end();) {
+            all_packet_queue_empty = false;
             if (it->tick > curTick()) {
                 DPRINTF(MAAPort, "%s: waiting for %d cycles to send %s to cache\n", __func__, getTicksToCycles(it->tick - curTick()), it->packet->print());
                 packet_remaining = true;
@@ -659,6 +680,7 @@ bool MAA::sendOutstandingCachePacket() {
 
 
         for (auto it = my_outstanding_alu_cache_write_pkts[core].begin(); it != my_outstanding_alu_cache_write_pkts[core].end();) {
+            all_packet_queue_empty = false;
             if (it->tick > curTick()) {
                 DPRINTF(MAAPort, "%s: waiting for %d cycles to send %s to cache\n", __func__, getTicksToCycles(it->tick - curTick()), it->packet->print());
                 packet_remaining = true;
@@ -687,6 +709,7 @@ bool MAA::sendOutstandingCachePacket() {
             all_channel_blocked = false;
 
         for (auto it = my_outstanding_alu_cache_read_pkts[core].begin(); it != my_outstanding_alu_cache_read_pkts[core].end();) {
+            all_packet_queue_empty = false;
             if (it->tick > curTick()) {
                 DPRINTF(MAAPort, "%s: waiting for %d cycles to send %s to cache\n", __func__, getTicksToCycles(it->tick - curTick()), it->packet->print());
                 packet_remaining = true;
@@ -738,6 +761,7 @@ bool MAA::sendOutstandingCachePacket() {
                 all_channel_blocked = false;
 
             for (auto it = my_outstanding_rangefuser_cache_write_pkts[core].begin(); it != my_outstanding_rangefuser_cache_write_pkts[core].end();) {
+                all_packet_queue_empty = false;
                 if (it->tick > curTick()) {
                     DPRINTF(MAAPort, "%s: waiting for %d cycles to send %s to cache\n", __func__, getTicksToCycles(it->tick - curTick()), it->packet->print());
                     packet_remaining = true;
@@ -765,6 +789,7 @@ bool MAA::sendOutstandingCachePacket() {
                 all_channel_blocked = false;
 
             for (auto it = my_outstanding_rangefuser_cache_read_pkts[core].begin(); it != my_outstanding_rangefuser_cache_read_pkts[core].end();) {
+                all_packet_queue_empty = false;
                 if (it->tick > curTick()) {
                     DPRINTF(MAAPort, "%s: waiting for %d cycles to send %s to cache\n", __func__, getTicksToCycles(it->tick - curTick()), it->packet->print());
                     packet_remaining = true;
@@ -806,9 +831,14 @@ bool MAA::sendOutstandingCachePacket() {
         scheduleNextSendCache();
     }
 
-    // if(all_channel_blocked){
-    //     scheduleSendCacheEvent(Cycles(1));
-    // }
+    if(all_channel_blocked){
+        DPRINTF(MAAPort, "%s: all channels are blocked\n", __func__);
+    }
+
+    if(!all_channel_blocked && all_packet_queue_empty){
+        DPRINTF(MAAPort, "%s: there is no packet to send\n", __func__);
+        // scheduleSendCacheEvent(Cycles(1));
+    }
 
     return true;
 }
@@ -838,6 +868,8 @@ void MAA::recvTimingResp(PacketPtr pkt, bool cached) {
         // call the read tile units to progress 
         indirectAccessUnits[tmp.maaIDs[i]].tilereadunitIdx->createAndSendTileExReads(1);
         indirectAccessUnits[tmp.maaIDs[i]].tilereadunitSrc->createAndSendTileExReads(1);
+        aluUnits[tmp.maaIDs[i]].tilereadunitSrc1->createAndSendTileExReads(1);
+        aluUnits[tmp.maaIDs[i]].tilereadunitSrc2->createAndSendTileExReads(1);
     }
 
     

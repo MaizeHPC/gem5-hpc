@@ -7,6 +7,7 @@
 #include <string>
 #include "sim/system.hh"
 #include "mem/MAA/TileWrite.hh"
+#include "mem/MAA/TileRead.hh"
 
 namespace gem5 {
 
@@ -23,6 +24,7 @@ public:
         Finish = 4,
         max
     };
+    TileRead* tilereadunitSrc1, *tilereadunitSrc2;
 
 protected:
     std::string status_names[5] = {

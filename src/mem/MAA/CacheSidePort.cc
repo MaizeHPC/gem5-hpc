@@ -108,6 +108,10 @@ bool MAA::CacheSidePort::sendPacket(PacketPtr pkt) {
         return false;
     }
     DPRINTF(MAACachePort, "%s Send is successfull...\n", __func__);
+    // if(!pkt->needsResponse()){
+    //     maa->scheduleNextSendCache();
+    // }
+
     if (pkt->needsResponse() && !pkt->cacheResponding())
         outstandingCacheSidePackets++;
     return true;
@@ -130,7 +134,7 @@ void MAA::CacheSidePort::allocate(int _core_id, int _maxOutstandingCacheSidePack
     // Taken from gem5-hpc/src/mem/packet_queue.cc (changed from 1024 to 16384)
     maxOutstandingCacheSidePackets = std::min(maxOutstandingCacheSidePackets, 16384);
     // We let it to be 32 less than the maximum
-    maxOutstandingCacheSidePackets -= 32;
+    maxOutstandingCacheSidePackets -= 256;
     blockReason = BlockReason::NOT_BLOCKED;
 }
 

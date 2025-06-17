@@ -645,6 +645,17 @@ void IndirectAccessUnit::fillRequestTable(bool &finished, bool &waitForFinish, b
             DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %u (cond not taken)\n", my_indirect_id, __func__, my_dst_tile, my_i, 0);
             maa->spd->setFakeData(my_dst_tile, my_i, my_word_size);
             tilewriteunit->setdata(0, my_i);
+            uint32_t idx;
+            uint32_t data_32;
+            uint64_t data_64;
+            tilereadunitIdx->getData<uint32_t>(idx, true);
+            if(my_src_tile != -1){
+                if(my_word_size ==4){
+                    tilereadunitSrc->getData<uint32_t>(data_32, true);
+                } else {
+                    tilereadunitSrc->getData<uint64_t>(data_64, true);
+                }
+            }
         }
         // if(my_idx_tile != -1){
         //     DPRINTF(MAAIndirect, "poped value =%d,  my_i=%d\n",maa->spd->SPDQueues[my_idx_tile].front(), my_i);
@@ -1505,7 +1516,9 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
     }
 
     if(my_received_responses == my_expected_responses){
-        tilewriteunit->mark_last_element_reached();
+        if(dst_tile_id != -1){
+            tilewriteunit->mark_last_element_reached();
+        }
     }
     return true;
 }

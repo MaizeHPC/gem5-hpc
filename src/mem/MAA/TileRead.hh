@@ -112,19 +112,26 @@ class TileRead : public BaseMMU::Translation {
                         int offset = pop_data_counter % words_per_block;
                         data = *(T*)(&twrm.data[offset*wordsize]);
                         // memcpy((void*) data, &twrm.data[0], wordsize);
-                        if(offset == words_per_block-1 && remove){
+                        if((offset == words_per_block-1 || pop_data_counter >= tile_write_counter[TileID]) && remove){
                             CAM.erase(p_block_addr);
+                        }
+                        bool ret;
+                        if(pop_data_counter < tile_write_counter[TileID]){
+                            ret = true;
+                        } else {
+                            ret = false;
                         }
                         if(remove){
                             pop_data_counter += 1;
                         }
-                        return true;
+                        return ret;
+                       
                     } else {
-                        DPRINTF(MAATileRead, "TR[%d] %s %s i:%d : Data has not been received my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], pop_data_counter, my_max);
+                        DPRINTF(MAATileRead, "TR[%d] %s %s TileId:%d i:%d : Data has not been received my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, pop_data_counter, my_max);
                         return false;
                     }
                 } else {
-                    DPRINTF(MAATileRead, "TR[%d] %s %s i:%d : No entries in the table my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], pop_data_counter, my_max);
+                    DPRINTF(MAATileRead, "TR[%d] %s %s TileID:%d i:%d : No entries in the table my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, pop_data_counter, my_max);
                     return false;
                 }
             };

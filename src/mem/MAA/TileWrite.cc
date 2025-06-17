@@ -77,6 +77,7 @@ namespace gem5 {
 
     void TileWrite::mark_last_element_reached(){
         last_elemet_set =  true;
+        write_tile_data();
     }
 
     void TileWrite::createAndSendTileExReads(int reqs_count){
@@ -165,8 +166,10 @@ namespace gem5 {
     uint32_t TileWrite::write_tile_data(){
         int count = 0;
         DPRINTF(MAATileWrite, "TW[%d] %s %s: trying to write a tile data, my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], my_max);
+        std::cout << "words_per_block: " << words_per_block << "\n" << std::flush;
         int bound_max = (my_max/words_per_block + 1) * words_per_block;
         bound_max = (bound_max > TileSize) ? TileSize : bound_max;
+        std::cout << "I am here\n" << std::flush;
         for(int i = write_current; i < bound_max; i += words_per_block){
             Addr v_block_addr = getVirtualAddress(i);
             Addr p_block_addr = translatePacket(v_block_addr);
@@ -193,7 +196,7 @@ namespace gem5 {
                     count++;
                     twrm.WriteReqSent = true;
                     CAM[p_block_addr] = twrm;
-                    tile_write_counter[TileID] += words_per_block;
+                    tile_write_counter[TileID] += twrm.count;
                     // CAM.erase(p_block_addr);
 
                 } else {
