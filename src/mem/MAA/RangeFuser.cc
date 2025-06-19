@@ -28,8 +28,13 @@ void RangeFuserUnit::allocate(unsigned int _num_tile_elements, MAA *_maa, int _m
     maa = _maa;
     my_range_id = _my_range_id;
     my_instruction = nullptr;
+
     tilewriteunit_0 = new TileWrite(maa, TW_sent_requests_0, TW_received_responses_0, my_size_0, maa->spd->tile_write_counts, FuncUnitType::RANGE);
     tilewriteunit_1 = new TileWrite(maa, TW_sent_requests_1, TW_received_responses_1, my_size_1, maa->spd->tile_write_counts, FuncUnitType::RANGE);
+
+    tilereadunitMin = new TileRead(maa, my_size_0, maa->spd->tile_write_counts, FuncUnitType::RANGE);
+    tilereadunitMax = new TileRead(maa, my_size_1, maa->spd->tile_write_counts, FuncUnitType::RANGE);
+
 
 }
 void RangeFuserUnit::updateLatency(int num_spd_read_accesses,
@@ -137,6 +142,14 @@ void RangeFuserUnit::executeInstruction() {
             tilewriteunit_1->createAndSendTileExReads(num_initial_reqs);
         }
 
+        if(my_min_tile != -1){
+            tilereadunitMin->set(my_min_tile, my_word_size,  my_instruction->CID, my_instruction->PC, block_size);
+        }
+
+        if(my_max_tile != -1){
+            tilereadunitMax->set(my_max_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size);
+        }
+
 
 
         // Setting the state of the instruction and RANGE unit
@@ -152,7 +165,7 @@ void RangeFuserUnit::executeInstruction() {
         int num_spd_write_accesses = 0;
         int num_computed_words = 0;
         if (my_cond_tile != -1) {
-            if (maa->spd->getTileStatus(my_cond_tile) == SPD::TileStatus::Finished) {
+            if (maa->spd->getTileStatus(my_cond_tile,   (uint8_t)FuncUnitType::RANGE, my_range_id) == SPD::TileStatus::Finished) {
                 my_cond_tile_ready = true;
                 if (my_max_i == -1) {
                     my_max_i = maa->spd->getSize(my_cond_tile);
@@ -161,7 +174,7 @@ void RangeFuserUnit::executeInstruction() {
                 panic_if(maa->spd->getSize(my_cond_tile) != my_max_i, "R[%d] %s: cond size (%d) != max (%d)!\n", my_range_id, __func__, maa->spd->getSize(my_cond_tile), my_max_i);
             }
         }
-        if (maa->spd->getTileStatus(my_min_tile) == SPD::TileStatus::Finished) {
+        if (maa->spd->getTileStatus(my_min_tile, (uint8_t)FuncUnitType::RANGE, my_range_id) == SPD::TileStatus::Finished) {
             my_min_tile_ready = true;
             if (my_max_i == -1) {
                 my_max_i = maa->spd->getSize(my_min_tile);
@@ -169,7 +182,7 @@ void RangeFuserUnit::executeInstruction() {
             }
             panic_if(maa->spd->getSize(my_min_tile) != my_max_i, "R[%d] %s: min size (%d) != max (%d)!\n", my_range_id, __func__, maa->spd->getSize(my_min_tile), my_max_i);
         }
-        if (maa->spd->getTileStatus(my_max_tile) == SPD::TileStatus::Finished) {
+        if (maa->spd->getTileStatus(my_max_tile, (uint8_t)FuncUnitType::RANGE, my_range_id) == SPD::TileStatus::Finished) {
             my_max_tile_ready = true;
             if (my_max_i == -1) {
                 my_max_i = maa->spd->getSize(my_max_tile);
@@ -240,8 +253,8 @@ void RangeFuserUnit::executeInstruction() {
                     tilewriteunit_1->setdata<uint32_t>(my_last_j, my_idx_j);
 
 
-                    maa->spd->SPDQueues[my_dst_i_tile].push(my_last_i);
-                    maa->spd->SPDQueues[my_dst_j_tile].push(my_last_j);
+                    // maa->spd->SPDQueues[my_dst_i_tile].push(my_last_i);
+                    // maa->spd->SPDQueues[my_dst_j_tile].push(my_last_j);
                     num_spd_write_accesses++;
                     DPRINTF(MAARangeFuser, "R[%d] %s: [%d-%d-%d][%d-%d-%d] inserted!\n", my_range_id, __func__, 0, my_last_i, my_max_i, my_min_j, my_last_j, my_max_j);
                 }

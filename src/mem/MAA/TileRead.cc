@@ -39,8 +39,8 @@ namespace gem5 {
         block_size = _block_size;
         // TileSize = _TileSize;
         words_per_block = block_size/wordsize;
-        DPRINTF(MAATileRead, "TR[%d] %s %s: words_per_block is %x\n", my_indirect_id, __func__,func_unit_names[static_cast<int>(funcUnit)], words_per_block);
-        DPRINTF(MAATileRead, "TR[%d] %s %s: wordsize %x\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)],  wordsize);
+        DPRINTF(MAATileRead, "TR[%d] %s %s: TileID:%d, words_per_block is %x\n", my_indirect_id, __func__,func_unit_names[static_cast<int>(funcUnit)], TileID, words_per_block);
+        DPRINTF(MAATileRead, "TR[%d] %s %s: TileID:%d wordsize %x\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)],  TileID, wordsize);
 
         ReadEx_current = 0;
         write_current = 0;
@@ -103,7 +103,7 @@ namespace gem5 {
             readex_pkt->headerDelay = readex_pkt->payloadDelay = 0;
             readex_pkt->allocate();
             expected_response++;
-            DPRINTF(MAATileRead, "TR[%d] %s: created %s for mem\n", my_indirect_id, __func__, readex_pkt->print());
+            DPRINTF(MAATileRead, "TR[%d] %s: TileID:%d created %s for mem\n", my_indirect_id, __func__, TileID, readex_pkt->print());
             maa->sendPacket(funcUnit, my_indirect_id, readex_pkt, maa->getClockEdge(Cycles(i-ReadEx_current + 1)), true);
 
             ReadEx_current = ReadEx_current + words_per_block;
@@ -117,9 +117,9 @@ namespace gem5 {
         DPRINTF(MAATileRead, "TR[%d] %s %s: TileID:%d received response for addr: %x \n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, addr);
         if(CAM.find(addr) != CAM.end()){
             received_response++;
-            DPRINTF(MAATileRead, "TR[%d] %s: found the entry on CAM for addr: %x \n", my_indirect_id, __func__, addr);
+            DPRINTF(MAATileRead, "TR[%d] %s: TileID:%d found the entry on CAM for addr: %x \n", my_indirect_id, __func__, TileID, addr);
             if(CAM[addr].ReadExSent){
-                DPRINTF(MAATileRead, "TR[%d] %s: ReadEx response addr: %x \n", my_indirect_id, __func__, addr);
+                DPRINTF(MAATileRead, "TR[%d] %s: TileID:%d ReadEx response addr: %x \n", my_indirect_id, __func__, TileID, addr);
                 struct TileReadReqMeta twrm = CAM[addr];
                 twrm.ReadExRecv = true;
                 memcpy(&twrm.data[0], dataptr, 64);

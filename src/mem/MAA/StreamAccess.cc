@@ -308,6 +308,11 @@ void StreamAccessUnit::executeInstruction() {
                     } else if (my_instruction->opcode == Instruction::OpcodeType::STREAM_LD) {
                         DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %u (cond not taken)\n", my_stream_id, __func__, my_dst_tile, page_it->curr_idx, 0);
                         maa->spd->setFakeData(my_dst_tile, page_it->curr_idx, my_word_size);
+                        if(my_word_size == 4){
+                            tilewriteunit->setdata<uint32_t>(0, page_it->curr_idx);
+                        } else if(my_word_size == 8){
+                            tilewriteunit->setdata<uint64_t>(0, page_it->curr_idx);
+                        }
                     }
                 }
                 if (broken == false) {
@@ -336,9 +341,9 @@ void StreamAccessUnit::executeInstruction() {
         if (get_all_received() != get_all_sent() || !maa->allStreamPacketsSent(my_stream_id)) {
             DPRINTF(MAAStream, "S[%d] %s: Waiting for responses, received (%d) != send (%d)...\n", my_stream_id, __func__, get_all_received(), get_all_sent());
         } else {
-            if (my_cond_tile != -1 && maa->spd->getTileStatus(my_cond_tile) != SPD::TileStatus::Finished) {
+            if (my_cond_tile != -1 && maa->spd->getTileStatus(my_cond_tile,  (uint8_t)FuncUnitType::STREAM, my_stream_id) != SPD::TileStatus::Finished) {
                 DPRINTF(MAAStream, "S[%d] %s: Waiting for cond tile %d to finish...\n", my_stream_id, __func__, my_cond_tile);
-            } else if (my_src_tile != -1 && maa->spd->getTileStatus(my_src_tile) != SPD::TileStatus::Finished) {
+            } else if (my_src_tile != -1 && maa->spd->getTileStatus(my_src_tile,  (uint8_t)FuncUnitType::STREAM, my_stream_id) != SPD::TileStatus::Finished) {
                 DPRINTF(MAAStream, "S[%d] %s: Waiting for src tile %d to finish...\n", my_stream_id, __func__, my_src_tile);
             } else {
                 DPRINTF(MAAStream, "S[%d] %s: state set to respond for request %s!\n", my_stream_id, __func__, my_instruction->print());

@@ -414,7 +414,7 @@ void IndirectAccessUnit::checkTileReady() {
     // Check if any of the source tiles are ready
     // Set my_max to the size of the ready tile
     if (my_cond_tile != -1) {
-        if (maa->spd->getTileStatus(my_cond_tile) == SPD::TileStatus::Finished) {
+        if (maa->spd->getTileStatus(my_cond_tile, (uint8_t)FuncUnitType::INDIRECT, my_indirect_id) == SPD::TileStatus::Finished) {
             my_cond_tile_ready = true;
             if (my_max == -1) {
                 my_max = maa->spd->getSize(my_cond_tile);
@@ -423,7 +423,7 @@ void IndirectAccessUnit::checkTileReady() {
             panic_if(maa->spd->getSize(my_cond_tile) != my_max, "I[%d] %s: cond size (%d) != max (%d)!\n", my_indirect_id, __func__, maa->spd->getSize(my_cond_tile), my_max);
         }
     }
-    if (maa->spd->getTileStatus(my_idx_tile) == SPD::TileStatus::Finished) {
+    if (maa->spd->getTileStatus(my_idx_tile, (uint8_t)FuncUnitType::INDIRECT, my_indirect_id) == SPD::TileStatus::Finished) {
         my_idx_tile_ready = true;
         if (my_max == -1) {
             my_max = maa->spd->getSize(my_idx_tile);
@@ -431,7 +431,10 @@ void IndirectAccessUnit::checkTileReady() {
         }
         panic_if(maa->spd->getSize(my_idx_tile) != my_max, "I[%d] %s: idx size (%d) != max (%d)!\n", my_indirect_id, __func__, maa->spd->getSize(my_idx_tile), my_max);
     }
-    if (my_instruction->opcode != Instruction::OpcodeType::INDIR_LD && my_instruction->opcode != Instruction::OpcodeType::INDIR_ST_SCALAR && my_instruction->opcode != Instruction::OpcodeType::INDIR_RMW_SCALAR && maa->spd->getTileStatus(my_src_tile) == SPD::TileStatus::Finished) {
+    if (my_instruction->opcode != Instruction::OpcodeType::INDIR_LD && 
+            my_instruction->opcode != Instruction::OpcodeType::INDIR_ST_SCALAR && 
+                my_instruction->opcode != Instruction::OpcodeType::INDIR_RMW_SCALAR && 
+                maa->spd->getTileStatus(my_src_tile, (uint8_t)FuncUnitType::INDIRECT, my_indirect_id) == SPD::TileStatus::Finished) {
         my_src_tile_ready = true;
     }
 }
@@ -644,7 +647,11 @@ void IndirectAccessUnit::fillRequestTable(bool &finished, bool &waitForFinish, b
         } else if (my_dst_tile != -1) {
             DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %u (cond not taken)\n", my_indirect_id, __func__, my_dst_tile, my_i, 0);
             maa->spd->setFakeData(my_dst_tile, my_i, my_word_size);
-            tilewriteunit->setdata(0, my_i);
+            if(my_word_size == 4){
+                tilewriteunit->setdata<uint32_t>(0, my_i);
+            } else if(my_word_size == 8){
+                tilewriteunit->setdata<uint64_t>(0, my_i);
+            }
             uint32_t idx;
             uint32_t data_32;
             uint64_t data_64;
@@ -1147,6 +1154,12 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
             }
         }
 
+        if(my_dst_tile != -1){
+            if(my_max != -1 && my_max == itr+1){
+                tilewriteunit->mark_last_element_reached();
+            }
+        }
+
         // // sent the data in order
         // const int words_per_cacheline = block_size/my_word_size;
         // int BufferAccessCount = 0;
@@ -1515,11 +1528,6 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
         scheduleNextExecution(true);
     }
 
-    if(my_received_responses == my_expected_responses){
-        if(dst_tile_id != -1){
-            tilewriteunit->mark_last_element_reached();
-        }
-    }
     return true;
 }
 

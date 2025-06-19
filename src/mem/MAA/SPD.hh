@@ -90,6 +90,7 @@ public:
     Cycles getDataLatency(int num_accesses);
     Cycles setDataLatency(int tile_id, int num_accesses);
     TileStatus getTileStatus(int tile_id);
+    TileStatus getTileStatus(int tile_id, uint8_t func, int id);
     bool getElementFinished(int tile_id, int element_id, int word_size, uint8_t func, int id);
     void setTileIdle(int tile_id, int word_size);
     void setTileService(int tile_id, int word_size);

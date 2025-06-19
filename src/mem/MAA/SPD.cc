@@ -75,6 +75,19 @@ SPD::TileStatus SPD::getTileStatus(int tile_id) {
     check_tile_id(tile_id, sizeof(uint32_t));
     return tiles_status[tile_id];
 }
+
+SPD::TileStatus SPD::getTileStatus(int tile_id, uint8_t func, int id){
+    check_tile_id(tile_id, sizeof(uint32_t));
+    if (tiles_status[tile_id] != SPD::TileStatus::Finished &&
+        (std::find(waiting_units_ids[tile_id].begin(), waiting_units_ids[tile_id].end(), id) == waiting_units_ids[tile_id].end() ||
+         std::find(waiting_units_funcs[tile_id].begin(), waiting_units_funcs[tile_id].end(), func) == waiting_units_funcs[tile_id].end())) {
+        DPRINTF(SPD, "%s: adding %s[%d] to waiting list tile[%d]\n", __func__, func_unit_names[func], id, tile_id);
+        waiting_units_funcs[tile_id].push_back(func);
+        waiting_units_ids[tile_id].push_back(id);
+    }
+    return tiles_status[tile_id];
+}
+
 void SPD::setTileIdle(int tile_id, int word_size) {
     check_tile_id(tile_id, sizeof(uint32_t));
     tiles_status[tile_id] = SPD::TileStatus::Idle;
@@ -87,9 +100,11 @@ void SPD::setTileIdle(int tile_id, int word_size) {
 }
 void SPD::setTileFinished(int tile_id, int word_size) {
     check_tile_id(tile_id, sizeof(uint32_t));
+    wakeup_waiting_units(tile_id);
     tiles_status[tile_id] = SPD::TileStatus::Finished;
     if (word_size == 8) {
         tiles_status[tile_id + 1] = SPD::TileStatus::Finished;
+        wakeup_waiting_units(tile_id+1);
     }
 }
 void SPD::setTileService(int tile_id, int word_size) {

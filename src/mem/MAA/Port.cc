@@ -613,7 +613,7 @@ bool MAA::sendOutstandingCachePacket() {
                 break;
             } else {
                 Addr paddr = it->paddr;
-                panic_if(it->packet->needsResponse(), "%s write packet %s needs response!\n", __func__, it->packet->print());
+                // panic_if(it->packet->needsResponse(), "%s write packet %s needs response!\n", __func__, it->packet->print());
                 OutstandingPacket tmp = my_outstanding_pkt_map[paddr];
                 if(tmp.cmd != MemCmd::WriteReq){
                     my_outstanding_pkt_map.erase(paddr);
@@ -693,7 +693,8 @@ bool MAA::sendOutstandingCachePacket() {
                 break;
             } else {
                 Addr paddr = it->paddr;
-                panic_if(it->packet->needsResponse(), "%s write packet %s needs response!\n", __func__, it->packet->print());
+                // Write Req needs response 
+                // panic_if(it->packet->needsResponse(), "%s write packet %s needs response!\n", __func__, it->packet->print());
                 OutstandingPacket tmp = my_outstanding_pkt_map[paddr];
                 my_outstanding_pkt_map[paddr].sent = true;
                 panic_if(tmp.maaIDs.size() != 1, "%s multiple write packes coalesced into one!\n", __func__);

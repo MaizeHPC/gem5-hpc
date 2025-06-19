@@ -19,6 +19,7 @@
 #include "arch/generic/mmu.hh"
 #include "mem/MAA/Tables.hh"
 #include "mem/MAA/IF.hh"
+#include "debug/MAATileWrite.hh"
 
 namespace gem5 {
 
@@ -100,6 +101,8 @@ class TileWrite : public BaseMMU::Translation {
             uint32_t block_element_id = (element_id/words_per_block) * words_per_block;
             Addr v_block_addr_id = getVirtualAddress(block_element_id);
             Addr p_block_addr = translatePacket(v_block_addr_id);
+            
+            DPRINTF(MAATileWrite, "TW[%d] %s %s TileID:%d i:%d : setData \n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, element_id);
 
             if(CAM.find(p_block_addr) != CAM.end()){
                 twrm = CAM[p_block_addr];

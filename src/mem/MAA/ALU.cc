@@ -227,7 +227,7 @@ void ALUUnit::executeInstruction() {
         // Check if any of the source tiles are ready
         // Set my_max to the size of the ready tile
         if (my_cond_tile != -1) {
-            if (maa->spd->getTileStatus(my_cond_tile) == SPD::TileStatus::Finished) {
+            if (maa->spd->getTileStatus(my_cond_tile, (uint8_t)FuncUnitType::ALU, my_alu_id) == SPD::TileStatus::Finished) {
                 my_cond_tile_ready = true;
                 if (my_max == -1) {
                     my_max = maa->spd->getSize(my_cond_tile);
@@ -236,7 +236,7 @@ void ALUUnit::executeInstruction() {
                 panic_if(maa->spd->getSize(my_cond_tile) != my_max, "A[%d] %s: cond size (%d) != max (%d)!\n", my_alu_id, __func__, maa->spd->getSize(my_cond_tile), my_max);
             }
         }
-        if (maa->spd->getTileStatus(my_src1_tile) == SPD::TileStatus::Finished) {
+        if (maa->spd->getTileStatus(my_src1_tile,  (uint8_t)FuncUnitType::ALU, my_alu_id) == SPD::TileStatus::Finished) {
             my_src1_tile_ready = true;
             if (my_max == -1) {
                 my_max = maa->spd->getSize(my_src1_tile);
@@ -245,7 +245,7 @@ void ALUUnit::executeInstruction() {
             panic_if(maa->spd->getSize(my_src1_tile) != my_max, "A[%d] %s: src1 size (%d) != max (%d)!\n", my_alu_id, __func__, maa->spd->getSize(my_src1_tile), my_max);
         }
         if (my_instruction->opcode == Instruction::OpcodeType::ALU_VECTOR) {
-            if (maa->spd->getTileStatus(my_src2_tile) == SPD::TileStatus::Finished) {
+            if (maa->spd->getTileStatus(my_src2_tile,  (uint8_t)FuncUnitType::ALU, my_alu_id) == SPD::TileStatus::Finished) {
                 my_src2_tile_ready = true;
                 if (my_max == -1) {
                     my_max = maa->spd->getSize(my_src2_tile);
@@ -502,7 +502,7 @@ void ALUUnit::executeInstruction() {
                             my_red_i32 = result_i32;
                         } else {
                             maa->spd->setData<int32_t>(my_dst_tile, my_i, result_i32);
-                            tilewriteunit->setdata<uint32_t>(result_i32, my_i);
+                            tilewriteunit->setdata<int32_t>(result_i32, my_i);
                             num_spd_write_accesses++;
                         }
                     }
@@ -926,7 +926,9 @@ void ALUUnit::executeInstruction() {
         }
         updateLatency(num_spd_read_data_accesses, num_spd_read_cond_accesses, num_spd_write_accesses, num_alu_accesses);
         DPRINTF(MAAALU, "A[%d] %s: setting state to Wait for request %s!\n", my_alu_id, __func__, my_instruction->print());
-        tilewriteunit->mark_last_element_reached();
+        if(my_max != -1 && my_i == my_max){
+            tilewriteunit->mark_last_element_reached();
+        }
         state = Status::Wait;
         scheduleNextExecution(true);
         break;

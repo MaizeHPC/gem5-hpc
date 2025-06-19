@@ -124,6 +124,7 @@ class TileRead : public BaseMMU::Translation {
                         if(remove){
                             pop_data_counter += 1;
                         }
+                        DPRINTF(MAATileRead, "TR[%d] %s %s TileId:%d i:%d : data was there my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, pop_data_counter, my_max);
                         return ret;
                        
                     } else {
