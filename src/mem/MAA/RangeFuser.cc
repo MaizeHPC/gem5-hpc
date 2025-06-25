@@ -143,11 +143,11 @@ void RangeFuserUnit::executeInstruction() {
         }
 
         if(my_min_tile != -1){
-            tilereadunitMin->set(my_min_tile, my_word_size,  my_instruction->CID, my_instruction->PC, block_size);
+            // tilereadunitMin->set(my_min_tile, my_word_size,  my_instruction->CID, my_instruction->PC, block_size, my_last_i);
         }
 
         if(my_max_tile != -1){
-            tilereadunitMax->set(my_max_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size);
+            // tilereadunitMax->set(my_max_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size, my_last_i);
         }
 
 
@@ -222,6 +222,30 @@ void RangeFuserUnit::executeInstruction() {
             bool cond_ready = my_cond_tile == -1 || maa->spd->getElementFinished(my_cond_tile, my_last_i, 4, (uint8_t)FuncUnitType::RANGE, my_range_id);
             bool min_ready = cond_ready && maa->spd->getElementFinished(my_min_tile, my_last_i, 4, (uint8_t)FuncUnitType::RANGE, my_range_id);
             bool max_ready = min_ready && maa->spd->getElementFinished(my_max_tile, my_last_i, 4, (uint8_t)FuncUnitType::RANGE, my_range_id);
+
+
+            // uint32_t data1_32, data2_32;
+            // bool min_ready = tilereadunitMin->getData<uint32_t>(data1_32, false);
+            // bool max_ready = tilereadunitMax->getData<uint32_t>(data2_32, false);
+
+            // if(my_input_word_size == 4){
+                
+            //     if(my_instruction->opcode == Instruction::OpcodeType::ALU_VECTOR) {
+            //         src2_readyTR = tilereadunitSrc2->getData<uint32_t>(data2_32, false);
+            //     } else {
+            //         src2_readyTR = true; 
+            //     }
+            // } else if(my_input_word_size == 8) {
+            //     src1_readyTR = tilereadunitSrc1->getData<uint64_t>(data1_64, false);
+            //     if(my_instruction->opcode == Instruction::OpcodeType::ALU_VECTOR) {
+            //         src2_readyTR = tilereadunitSrc2->getData<uint64_t>(data2_64, false);
+            //     } else {
+            //         src2_readyTR = true;
+            //     }
+            // }
+
+
+
             if (cond_ready == false) {
                 DPRINTF(MAARangeFuser, "R[%d] %s: cond tile[%d] element[%d] not ready, returning!\n", my_range_id, __func__, my_cond_tile, my_last_i);
             } else if (min_ready == false) {
@@ -237,12 +261,18 @@ void RangeFuserUnit::executeInstruction() {
                 num_spd_read_accesses++;
             }
             if (my_cond_tile == -1 || maa->spd->getData<uint32_t>(my_cond_tile, my_last_i) != 0) {
-                if (my_last_j == -1) {
-                    my_last_j = maa->spd->getData<uint32_t>(my_min_tile, my_last_i);
-                    num_spd_read_accesses++;
-                }
+
                 uint32_t my_min_j = maa->spd->getData<uint32_t>(my_min_tile, my_last_i);
                 uint32_t my_max_j = maa->spd->getData<uint32_t>(my_max_tile, my_last_i);
+
+                // tilereadunitMin->getData<uint32_t>(my_min_j, true);
+                // tilereadunitMax->getData<uint32_t>(my_max_j, true);
+
+                if (my_last_j == -1) {
+                    my_last_j = my_min_j; // maa->spd->getData<uint32_t>(my_min_tile, my_last_i);
+                    num_spd_read_accesses++;
+                }
+
                 num_spd_read_accesses++;
                 num_computed_words++;
                 for (; my_last_j < my_max_j && my_idx_j < num_tile_elements; my_last_j += my_stride, my_idx_j++) {
@@ -252,9 +282,9 @@ void RangeFuserUnit::executeInstruction() {
                     tilewriteunit_0->setdata<uint32_t>(my_last_i, my_idx_j);
                     tilewriteunit_1->setdata<uint32_t>(my_last_j, my_idx_j);
 
-
                     // maa->spd->SPDQueues[my_dst_i_tile].push(my_last_i);
                     // maa->spd->SPDQueues[my_dst_j_tile].push(my_last_j);
+                    
                     num_spd_write_accesses++;
                     DPRINTF(MAARangeFuser, "R[%d] %s: [%d-%d-%d][%d-%d-%d] inserted!\n", my_range_id, __func__, 0, my_last_i, my_max_i, my_min_j, my_last_j, my_max_j);
                 }
@@ -272,17 +302,19 @@ void RangeFuserUnit::executeInstruction() {
         my_min_tile_ready = true;
         my_max_tile_ready = true;
         updateLatency(num_spd_read_accesses, num_spd_write_accesses, num_computed_words);
-        DPRINTF(MAARangeFuser, "R[%d] %s: setting state to finish for request %s!\n", my_range_id, __func__, my_instruction->print());
+        DPRINTF(MAARangeFuser, "R[%d] %s: setting state to wait for request %s!\n", my_range_id, __func__, my_instruction->print());
         tilewriteunit_0->mark_last_element_reached();
         tilewriteunit_1->mark_last_element_reached();
+        tilereadunitMin->mark_last_element_reached();
+        tilereadunitMax->mark_last_element_reached();
 
         state = Status::Wait;
         scheduleNextExecution(true);
         break;
     }
     case Status::Wait: {
-        if((TW_sent_requests_0 == TW_received_responses_0 && TW_sent_requests_0 != 0) &&
-                (TW_sent_requests_1 == TW_received_responses_1 && TW_sent_requests_1 != 0)){
+        if((tilewriteunit_0->check_all_responses_received() && tilewriteunit_1->check_all_responses_received() &&
+            tilereadunitMin->check_all_responses_received() && tilereadunitMax->check_all_responses_received())){
             state = Status::Finish;
             DPRINTF(MAARangeFuser, "A[%d] %s: setting state to finish for request %s!\n", my_range_id, __func__, my_instruction->print());
             scheduleNextExecution(true);
@@ -325,30 +357,37 @@ void RangeFuserUnit::setInstruction(Instruction *_instruction) {
 void RangeFuserUnit::scheduleExecuteInstructionEvent(int latency) {
     DPRINTF(MAARangeFuser, "R[%d] %s: scheduling execute for the RangeFuser Unit in the next %d cycles!\n", my_range_id, __func__, latency);
     Tick new_when = maa->getClockEdge(Cycles(latency));
-    panic_if(executeInstructionEvent.scheduled(), "Event already scheduled!\n");
-    maa->schedule(executeInstructionEvent, new_when);
-    // if (!executeInstructionEvent.scheduled()) {
-    //     maa->schedule(executeInstructionEvent, new_when);
-    // } else {
-    //     Tick old_when = executeInstructionEvent.when();
-    //     if (new_when < old_when)
-    //         maa->reschedule(executeInstructionEvent, new_when);
-    // }
+    // panic_if(executeInstructionEvent.scheduled(), "Event already scheduled!\n");
+    // maa->schedule(executeInstructionEvent, new_when);
+    if (!executeInstructionEvent.scheduled()) {
+        maa->schedule(executeInstructionEvent, new_when);
+    } else {
+        Tick old_when = executeInstructionEvent.when();
+        if (new_when < old_when)
+            maa->reschedule(executeInstructionEvent, new_when);
+    }
 }
 
 bool RangeFuserUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached){
     bool ret0 = tilewriteunit_0->recv_data(addr, dataptr, cached);
     bool ret1 = tilewriteunit_1->recv_data(addr, dataptr, cached);
 
-    if(ret0 && ret1){
-        panic("Request should only be originated from one request\n");
-    }
+    bool ret2 = tilereadunitMin->recv_data(addr, dataptr, cached);
+    bool ret3 = tilereadunitMax->recv_data(addr, dataptr, cached);
 
-    if((TW_sent_requests_0 == TW_received_responses_0 && TW_sent_requests_0 != 0) &&
-        (TW_sent_requests_1 == TW_received_responses_1 && TW_sent_requests_1 != 0)){
+    // should receive the response from only one data structure 
+    int sum = (int)ret0 + (int)ret1 + (int)ret2 + (int)ret3;
+    assert(sum <= 1);
+
+    if((ret0 || ret1 || ret2 || ret3)){
         scheduleNextExecution(true);
     }
-    return ret0 || ret1;
+
+    // if(((TW_sent_requests_0 == TW_received_responses_0 && TW_sent_requests_0 != 0) &&
+    //     (TW_sent_requests_1 == TW_received_responses_1 && TW_sent_requests_1 != 0)) && (ret0 || ret1) && state == Status::Work){
+    //     scheduleNextExecution(true);
+    // }
+    return ret0 || ret1 || ret2 || ret3;
 }
 
 } // namespace gem5

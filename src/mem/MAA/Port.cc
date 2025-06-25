@@ -871,6 +871,8 @@ void MAA::recvTimingResp(PacketPtr pkt, bool cached) {
         indirectAccessUnits[tmp.maaIDs[i]].tilereadunitSrc->createAndSendTileExReads(1);
         aluUnits[tmp.maaIDs[i]].tilereadunitSrc1->createAndSendTileExReads(1);
         aluUnits[tmp.maaIDs[i]].tilereadunitSrc2->createAndSendTileExReads(1);
+        rangeUnits[tmp.maaIDs[i]].tilereadunitMin->createAndSendTileExReads(1);
+        rangeUnits[tmp.maaIDs[i]].tilereadunitMax->createAndSendTileExReads(1);
     }
 
     

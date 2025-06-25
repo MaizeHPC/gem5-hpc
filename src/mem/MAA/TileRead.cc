@@ -29,7 +29,7 @@ namespace gem5 {
     };
 
     void TileRead::set(int _TileID, uint32_t _wordsize,  ContextID _CID, Addr _PC, 
-        uint32_t _block_size){
+        uint32_t _block_size, uint32_t start){
         TileID = _TileID;
         assert(TileID >= 0 && TileID<= 32);
 
@@ -42,12 +42,17 @@ namespace gem5 {
         DPRINTF(MAATileRead, "TR[%d] %s %s: TileID:%d, words_per_block is %x\n", my_indirect_id, __func__,func_unit_names[static_cast<int>(funcUnit)], TileID, words_per_block);
         DPRINTF(MAATileRead, "TR[%d] %s %s: TileID:%d wordsize %x\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)],  TileID, wordsize);
 
-        ReadEx_current = 0;
+        ReadEx_current = (start/words_per_block)*words_per_block;
         write_current = 0;
         my_max = 0;
-        pop_data_counter = 0;
+        pop_data_counter = ReadEx_current + start%words_per_block;
         last_elemet_set = false;
         ready_to_req = true;
+
+        expected_response = 0;
+        received_response = 0;
+
+        // assert(CAM.empty());
         CAM.clear();
     }
 
@@ -77,6 +82,11 @@ namespace gem5 {
 
     void TileRead::mark_last_element_reached(){
         last_elemet_set =  true;
+        ready_to_req = false;
+    }
+
+    bool TileRead::check_all_responses_received(){
+        return expected_response == received_response;
     }
 
     void TileRead::createAndSendTileExReads(int reqs_count){

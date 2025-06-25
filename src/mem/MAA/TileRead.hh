@@ -71,7 +71,6 @@ class TileRead : public BaseMMU::Translation {
     bool last_elemet_set;
     int pop_data_counter;
     bool ready_to_req;
- 
     // int &src_data_counter;
 
 
@@ -81,7 +80,7 @@ class TileRead : public BaseMMU::Translation {
         TileRead(MAA *_maa, int &my_max, std::vector<int>& tile_write_counter, FuncUnitType funcUnit);
 
         void set(int _TileID, uint32_t _wordsize, ContextID _CID, Addr _PC, 
-                uint32_t _block_size);
+                uint32_t _block_size, uint32_t start = 0);
 
         Addr getVirtualAddress(int element_id);
         Addr translatePacket(Addr vaddr);
@@ -94,8 +93,9 @@ class TileRead : public BaseMMU::Translation {
         uint32_t write_tile_data();
         void markDelayed() override {};
         void mark_last_element_reached();
+        bool check_all_responses_received();
 
-        template<typename T> bool getData(T& data, bool remove){
+        template<typename T> bool getData(T& data, int element_id, bool remove){
 
                 int blk_counter_id = pop_data_counter/words_per_block *words_per_block;
                 Addr v_block_addr = getVirtualAddress(blk_counter_id);
@@ -117,21 +117,25 @@ class TileRead : public BaseMMU::Translation {
                         }
                         bool ret;
                         if(pop_data_counter < tile_write_counter[TileID]){
+                            DPRINTF(MAATileRead, "TR[%d] %s %s TileId:%d i:%d : data was there my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, pop_data_counter, my_max);
+                            assert(pop_data_counter == element_id);
                             ret = true;
+
                         } else {
                             ret = false;
                         }
                         if(remove){
                             pop_data_counter += 1;
                         }
-                        DPRINTF(MAATileRead, "TR[%d] %s %s TileId:%d i:%d : data was there my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, pop_data_counter, my_max);
                         return ret;
                        
                     } else {
+                        panic_if(remove, "Can't be removed as element is not available yet");
                         DPRINTF(MAATileRead, "TR[%d] %s %s TileId:%d i:%d : Data has not been received my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, pop_data_counter, my_max);
                         return false;
                     }
                 } else {
+                    panic_if(remove, "Can't be removed as element is not available yet");
                     DPRINTF(MAATileRead, "TR[%d] %s %s TileID:%d i:%d : No entries in the table my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, pop_data_counter, my_max);
                     return false;
                 }

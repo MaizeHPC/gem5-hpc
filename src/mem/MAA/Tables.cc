@@ -167,7 +167,12 @@ bool RequestTable::add_entry(int itr, Addr base_addr, uint16_t wid) {
             break;
         }
     }
-    assert(free_entry_itr != -1);
+
+    // assert(free_entry_itr != -1);
+    if(free_entry_itr == -1){
+        return false;
+    }
+
     entries[address_itr][free_entry_itr] = RequestTableEntry(itr, wid);
     entries_valid[address_itr][free_entry_itr] = true;
     if (is_stream) {
@@ -213,7 +218,12 @@ bool RequestTable::add_entry(int itr, Addr base_addr, uint16_t wid, uint64_t dat
             break;
         }
     }
-    assert(free_entry_itr != -1);
+
+    if(free_entry_itr == -1){
+        return false;
+    }
+    // assert(free_entry_itr != -1);
+
     entries[address_itr][free_entry_itr] = RequestTableEntry(itr, wid, data);
     entries_valid[address_itr][free_entry_itr] = true;
     if (is_stream) {

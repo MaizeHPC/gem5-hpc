@@ -48,6 +48,8 @@ namespace gem5 {
         my_max = 0;
         tile_write_counter[TileID] = 0;
         last_elemet_set = false;
+        set_data_count = 0;
+        // assert(CAM.empty());
         CAM.clear();
     }
 
@@ -78,6 +80,14 @@ namespace gem5 {
     void TileWrite::mark_last_element_reached(){
         last_elemet_set =  true;
         write_tile_data();
+    }
+
+    bool TileWrite::is_last_element_reached(){
+        return last_elemet_set;
+    }
+
+    bool TileWrite::check_all_responses_received(){
+        return expected_response == received_response;
     }
 
     void TileWrite::createAndSendTileExReads(int reqs_count){

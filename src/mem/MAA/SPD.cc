@@ -191,8 +191,10 @@ void SPD::wakeup_waiting_units(int tile_id) {
             break;
         }
         case (uint8_t)FuncUnitType::RANGE: {
-            assert(maa->rangeUnits[waiting_units_id].getState() == RangeFuserUnit::Status::Work);
-            maa->rangeUnits[waiting_units_id].scheduleNextExecution(true);
+            // assert(maa->rangeUnits[waiting_units_id].getState() == RangeFuserUnit::Status::Work);
+            if(maa->rangeUnits[waiting_units_id].getState() == RangeFuserUnit::Status::Work){
+                maa->rangeUnits[waiting_units_id].scheduleNextExecution(true);
+            }
             break;
         }
         }

@@ -71,6 +71,7 @@ class TileWrite : public BaseMMU::Translation {
     FuncUnitType funcUnit;
 
     bool last_elemet_set;
+    int set_data_count;
     
 
 
@@ -93,16 +94,21 @@ class TileWrite : public BaseMMU::Translation {
         uint32_t write_tile_data();
         void markDelayed() override {};
         void mark_last_element_reached();
+        bool is_last_element_reached();
+        bool check_all_responses_received();
 
         template <typename T>
         void setdata(T data, int element_id){
+            DPRINTF(MAATileWrite, "TW[%d] %s %s TileID:%d i:%d : setData set_data_count:%d \n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, element_id, set_data_count);
+            // assert(element_id == set_data_count);
+
             struct TileWriteReqMeta twrm;
             // check if the entry already exisits 
             uint32_t block_element_id = (element_id/words_per_block) * words_per_block;
             Addr v_block_addr_id = getVirtualAddress(block_element_id);
             Addr p_block_addr = translatePacket(v_block_addr_id);
             
-            DPRINTF(MAATileWrite, "TW[%d] %s %s TileID:%d i:%d : setData \n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, element_id);
+            
 
             if(CAM.find(p_block_addr) != CAM.end()){
                 twrm = CAM[p_block_addr];
@@ -121,6 +127,7 @@ class TileWrite : public BaseMMU::Translation {
             CAM[p_block_addr] = twrm;
             write_tile_data();
             my_max = std::max(my_max, element_id);
+            set_data_count += 1;
 
         }
 

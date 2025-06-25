@@ -171,6 +171,7 @@ protected:
     int TW_received_responses;
     int my_processed_count;
     int my_i_count;
+    int set_fake_max;
     std::vector<int> my_sorted_indices;
     bool **my_RT_req_sent;
     std::vector<int> *my_RT_slice_order;
