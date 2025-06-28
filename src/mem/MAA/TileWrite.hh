@@ -99,6 +99,9 @@ class TileWrite : public BaseMMU::Translation {
 
         template <typename T>
         void setdata(T data, int element_id){
+            
+            assert(sizeof(T) == wordsize);
+
             DPRINTF(MAATileWrite, "TW[%d] %s %s TileID:%d i:%d : setData set_data_count:%d \n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, element_id, set_data_count);
             // assert(element_id == set_data_count);
 

@@ -143,11 +143,11 @@ void RangeFuserUnit::executeInstruction() {
         }
 
         if(my_min_tile != -1){
-            // tilereadunitMin->set(my_min_tile, my_word_size,  my_instruction->CID, my_instruction->PC, block_size, my_last_i);
+            tilereadunitMin->set(my_min_tile, my_word_size,  my_instruction->CID, my_instruction->PC, block_size, my_last_i);
         }
 
         if(my_max_tile != -1){
-            // tilereadunitMax->set(my_max_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size, my_last_i);
+            tilereadunitMax->set(my_max_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size, my_last_i);
         }
 
 
@@ -220,28 +220,14 @@ void RangeFuserUnit::executeInstruction() {
             //     break;
             // }
             bool cond_ready = my_cond_tile == -1 || maa->spd->getElementFinished(my_cond_tile, my_last_i, 4, (uint8_t)FuncUnitType::RANGE, my_range_id);
-            bool min_ready = cond_ready && maa->spd->getElementFinished(my_min_tile, my_last_i, 4, (uint8_t)FuncUnitType::RANGE, my_range_id);
-            bool max_ready = min_ready && maa->spd->getElementFinished(my_max_tile, my_last_i, 4, (uint8_t)FuncUnitType::RANGE, my_range_id);
+            // bool min_ready = cond_ready && maa->spd->getElementFinished(my_min_tile, my_last_i, 4, (uint8_t)FuncUnitType::RANGE, my_range_id);
+            // bool max_ready = min_ready && maa->spd->getElementFinished(my_max_tile, my_last_i, 4, (uint8_t)FuncUnitType::RANGE, my_range_id);
 
 
-            // uint32_t data1_32, data2_32;
-            // bool min_ready = tilereadunitMin->getData<uint32_t>(data1_32, false);
-            // bool max_ready = tilereadunitMax->getData<uint32_t>(data2_32, false);
+            uint32_t data1_32, data2_32;
+            bool min_ready = tilereadunitMin->getData<uint32_t>(data1_32, my_last_i, false);
+            bool max_ready = tilereadunitMax->getData<uint32_t>(data2_32, my_last_i, false);
 
-            // if(my_input_word_size == 4){
-                
-            //     if(my_instruction->opcode == Instruction::OpcodeType::ALU_VECTOR) {
-            //         src2_readyTR = tilereadunitSrc2->getData<uint32_t>(data2_32, false);
-            //     } else {
-            //         src2_readyTR = true; 
-            //     }
-            // } else if(my_input_word_size == 8) {
-            //     src1_readyTR = tilereadunitSrc1->getData<uint64_t>(data1_64, false);
-            //     if(my_instruction->opcode == Instruction::OpcodeType::ALU_VECTOR) {
-            //         src2_readyTR = tilereadunitSrc2->getData<uint64_t>(data2_64, false);
-            //     } else {
-            //         src2_readyTR = true;
-            //     }
             // }
 
 
@@ -262,11 +248,11 @@ void RangeFuserUnit::executeInstruction() {
             }
             if (my_cond_tile == -1 || maa->spd->getData<uint32_t>(my_cond_tile, my_last_i) != 0) {
 
-                uint32_t my_min_j = maa->spd->getData<uint32_t>(my_min_tile, my_last_i);
-                uint32_t my_max_j = maa->spd->getData<uint32_t>(my_max_tile, my_last_i);
+                uint32_t my_min_j; // = maa->spd->getData<uint32_t>(my_min_tile, my_last_i);
+                uint32_t my_max_j; // = maa->spd->getData<uint32_t>(my_max_tile, my_last_i);
 
-                // tilereadunitMin->getData<uint32_t>(my_min_j, true);
-                // tilereadunitMax->getData<uint32_t>(my_max_j, true);
+                tilereadunitMin->getData<uint32_t>(my_min_j, my_last_i, true);
+                tilereadunitMax->getData<uint32_t>(my_max_j, my_last_i, true);
 
                 if (my_last_j == -1) {
                     my_last_j = my_min_j; // maa->spd->getData<uint32_t>(my_min_tile, my_last_i);

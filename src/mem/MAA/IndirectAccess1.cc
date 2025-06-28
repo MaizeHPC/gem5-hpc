@@ -1304,7 +1304,7 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
                 break;
             }
             case Instruction::DataType::INT32_TYPE: {
-                int32_t word_data = castuint64_t<uint32_t> (srcData); //maa->spd->getData<int32_t>(my_src_tile, itr);
+                int32_t word_data = castuint64_t<int32_t> (srcData); //maa->spd->getData<int32_t>(my_src_tile, itr);
                 if (my_instruction->optype == Instruction::OPType::ADD_OP) {
                     DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] (%d) += SPD[%d][%d] (%d) = %d!\n",
                             my_indirect_id, __func__, wid, ((int32_t *)new_data)[wid], my_src_tile, itr, word_data, ((int32_t *)new_data)[wid] + word_data);
@@ -1350,7 +1350,7 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
                 break;
             }
             case Instruction::DataType::INT64_TYPE: {
-                int64_t word_data = castuint64_t<uint64_t> (srcData);
+                int64_t word_data = castuint64_t<int64_t> (srcData);
                 // int64_t word_data = maa->spd->getData<int64_t>(my_src_tile, itr);
                 if (my_instruction->optype == Instruction::OPType::ADD_OP) {
                     DPRINTF(MAAIndirect, "I[%d] %s: new_data[%d] (%ld) += SPD[%d][%d] (%ld) = %ld!\n",

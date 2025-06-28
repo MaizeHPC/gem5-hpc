@@ -97,6 +97,8 @@ class TileRead : public BaseMMU::Translation {
 
         template<typename T> bool getData(T& data, int element_id, bool remove){
 
+                assert(sizeof(T) == wordsize);
+
                 int blk_counter_id = pop_data_counter/words_per_block *words_per_block;
                 Addr v_block_addr = getVirtualAddress(blk_counter_id);
                 Addr p_block_addr = translatePacket(v_block_addr);
