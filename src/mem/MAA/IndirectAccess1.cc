@@ -492,6 +492,7 @@ void IndirectAccessUnit::fillRequestTable(bool &finished, bool &waitForFinish, b
                 maa->spd->setSize(my_dst_tile, my_i);
             }
             if (checkReadyForFinish()) {
+                DPRINTF(MAAIndirect, "I[%d] %s: reached finished status!\n", my_indirect_id, __func__);
                 finished = true;
                 break;
             } else {
@@ -762,7 +763,8 @@ void IndirectAccessUnit::executeInstruction() {
         CacheTileWrite = true;
         CacheTileWriteCount = 0;
 
-        set_fake_max = 0;
+        set_fake_max = -1;
+        my_received_itr_max = -1;
   
 
         // Setting the state of the instruction and stream unit
@@ -909,10 +911,19 @@ void IndirectAccessUnit::executeInstruction() {
             (*maa->stats.IND_CyclesFill[my_indirect_id]) += maa->getTicksToCycles(curTick() - my_fill_start_tick);
             my_fill_start_tick = 0;
         }
+
+
+        if(my_dst_tile != -1){
+            if(((my_max != -1 && my_max == my_received_itr_max+1) || my_max == set_fake_max + 1) && !tilewriteunit->is_last_element_reached()){
+                DPRINTF(MAAIndirect, "I[%d] %s itr:%d: marking the last element\n", my_indirect_id, __func__, my_received_itr_max);
+                tilewriteunit->mark_last_element_reached();
+            }
+        }
         
 
         int offset_cache_tile_write = CacheTileWrite ? CacheTileWriteCount : 0;
-        if (maa->allIndirectPacketsSent(my_indirect_id) && get_all_received() == get_all_expected() + offset_cache_tile_write) {
+        // if (maa->allIndirectPacketsSent(my_indirect_id) && get_all_received() == get_all_expected() + offset_cache_tile_write) {
+        if (maa->allIndirectPacketsSent(my_indirect_id) && (my_expected_responses == my_received_responses)  && tilewriteunit->check_all_responses_received()) {
             if (scheduleNextExecution()) {
                 DPRINTF(MAAIndirect, "I[%d] %s: requesting is still not ready, returning!\n", my_indirect_id, __func__);
                 break;
@@ -1153,8 +1164,11 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
             }
         }
 
+        // sending the signal to write last cache line
+        my_received_itr_max = std::max(itr, my_received_itr_max);
         if(my_dst_tile != -1){
             if(((my_max != -1 && my_max == itr+1) || my_max == set_fake_max + 1) && !tilewriteunit->is_last_element_reached()){
+                DPRINTF(MAAIndirect, "I[%d] %s itr:%d: marking the last element\n", my_indirect_id, __func__, itr);
                 tilewriteunit->mark_last_element_reached();
             }
         }

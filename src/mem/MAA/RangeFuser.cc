@@ -224,9 +224,11 @@ void RangeFuserUnit::executeInstruction() {
             // bool max_ready = min_ready && maa->spd->getElementFinished(my_max_tile, my_last_i, 4, (uint8_t)FuncUnitType::RANGE, my_range_id);
 
 
-            uint32_t data1_32, data2_32;
-            bool min_ready = tilereadunitMin->getData<uint32_t>(data1_32, my_last_i, false);
-            bool max_ready = tilereadunitMax->getData<uint32_t>(data2_32, my_last_i, false);
+            // uint32_t data1_32, data2_32;
+            uint32_t my_min_j; // = maa->spd->getData<uint32_t>(my_min_tile, my_last_i);
+            uint32_t my_max_j; // = maa->spd->getData<uint32_t>(my_max_tile, my_last_i);
+            bool min_ready = tilereadunitMin->getData<uint32_t>(my_min_j, my_last_i, false);
+            bool max_ready = tilereadunitMax->getData<uint32_t>(my_max_j, my_last_i, false);
 
             // }
 
@@ -248,11 +250,11 @@ void RangeFuserUnit::executeInstruction() {
             }
             if (my_cond_tile == -1 || maa->spd->getData<uint32_t>(my_cond_tile, my_last_i) != 0) {
 
-                uint32_t my_min_j; // = maa->spd->getData<uint32_t>(my_min_tile, my_last_i);
-                uint32_t my_max_j; // = maa->spd->getData<uint32_t>(my_max_tile, my_last_i);
+                // uint32_t my_min_j; // = maa->spd->getData<uint32_t>(my_min_tile, my_last_i);
+                // uint32_t my_max_j; // = maa->spd->getData<uint32_t>(my_max_tile, my_last_i);
 
-                tilereadunitMin->getData<uint32_t>(my_min_j, my_last_i, true);
-                tilereadunitMax->getData<uint32_t>(my_max_j, my_last_i, true);
+                // tilereadunitMin->getData<uint32_t>(my_min_j, my_last_i, true);
+                // tilereadunitMax->getData<uint32_t>(my_max_j, my_last_i, true);
 
                 if (my_last_j == -1) {
                     my_last_j = my_min_j; // maa->spd->getData<uint32_t>(my_min_tile, my_last_i);
@@ -280,6 +282,9 @@ void RangeFuserUnit::executeInstruction() {
                     break;
                 }
             }
+
+            tilereadunitMin->getData<uint32_t>(my_min_j, my_last_i, true);
+            tilereadunitMax->getData<uint32_t>(my_max_j, my_last_i, true);
             my_last_i++;
         }
         // We have generated a tile of i and j values successfully

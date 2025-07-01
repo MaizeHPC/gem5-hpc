@@ -72,6 +72,7 @@ class TileWrite : public BaseMMU::Translation {
 
     bool last_elemet_set;
     int set_data_count;
+    bool all_eleements_written;
     
 
 

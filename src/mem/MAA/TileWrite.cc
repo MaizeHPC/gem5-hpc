@@ -49,6 +49,7 @@ namespace gem5 {
         tile_write_counter[TileID] = 0;
         last_elemet_set = false;
         set_data_count = 0;
+        all_eleements_written = true;
         // assert(CAM.empty());
         CAM.clear();
     }
@@ -87,11 +88,11 @@ namespace gem5 {
     }
 
     bool TileWrite::check_all_responses_received(){
-        return expected_response == received_response;
+        return (expected_response == received_response) && all_eleements_written;
     }
 
     void TileWrite::createAndSendTileExReads(int reqs_count){
-        for(int i = ReadEx_current; i < TileSize && i < ReadEx_current + reqs_count*words_per_block; i += words_per_block){
+        for(int i = ReadEx_current; i < TileSize && i < ReadEx_current + reqs_count*words_per_block && !(last_elemet_set && i >= my_max); i += words_per_block){
             Addr v_block_addr = getVirtualAddress(i);
             DPRINTF(MAATileWrite, "TW[%d] %s %s: TileID:%d,  i=%d Virtual Cache Tile Address for write is %x\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, i ,  v_block_addr);
             Addr p_block_addr = translatePacket(v_block_addr);
@@ -176,10 +177,9 @@ namespace gem5 {
     uint32_t TileWrite::write_tile_data(){
         int count = 0;
         DPRINTF(MAATileWrite, "TW[%d] %s %s: TileID:%d trying to write a tile data, my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, my_max);
-        std::cout << "words_per_block: " << words_per_block << "\n" << std::flush;
         int bound_max = (my_max/words_per_block + 1) * words_per_block;
         bound_max = (bound_max > TileSize) ? TileSize : bound_max;
-        std::cout << "I am here\n" << std::flush;
+        all_eleements_written = true;
         for(int i = write_current; i < bound_max; i += words_per_block){
             Addr v_block_addr = getVirtualAddress(i);
             Addr p_block_addr = translatePacket(v_block_addr);
@@ -210,10 +210,12 @@ namespace gem5 {
                     // CAM.erase(p_block_addr);
 
                 } else {
+                    all_eleements_written = false;
                     DPRINTF(MAATileWrite, "TW[%d] %s %s TileId:%d i:%d : entry for %d, twrm.count:%d, twrm.ReadExRecv: %d my_max:%d, last_elemet_set:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, i,  p_block_addr, twrm.count, twrm.ReadExRecv, my_max, last_elemet_set);
                     break;
                 }
             } else {
+                all_eleements_written = false;
                 DPRINTF(MAATileWrite, "TW[%d] %s %s TileID:%d, i:%d: entry for %d hasn't been created, my_max:%d last_elemet_set:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, i, p_block_addr, my_max, last_elemet_set);
                 break;
             }

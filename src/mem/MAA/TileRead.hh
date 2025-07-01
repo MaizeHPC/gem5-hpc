@@ -119,7 +119,7 @@ class TileRead : public BaseMMU::Translation {
                         }
                         bool ret;
                         if(pop_data_counter < tile_write_counter[TileID]){
-                            DPRINTF(MAATileRead, "TR[%d] %s %s TileId:%d i:%d : data was there my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, pop_data_counter, my_max);
+                            DPRINTF(MAATileRead, "TR[%d] %s %s TileId:%d pop_data_counter:%d element_id:%d : data was there my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, pop_data_counter, element_id, my_max);
                             assert(pop_data_counter == element_id);
                             ret = true;
 
