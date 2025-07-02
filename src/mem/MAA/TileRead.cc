@@ -26,6 +26,8 @@ namespace gem5 {
         TileSize = 16384;
         my_translation_done = false;
         ready_to_req = false;
+        expected_response = 0;
+        received_response = 0;
     };
 
     void TileRead::set(int _TileID, uint32_t _wordsize,  ContextID _CID, Addr _PC, 
@@ -48,6 +50,12 @@ namespace gem5 {
         pop_data_counter = ReadEx_current + start%words_per_block;
         last_elemet_set = false;
         ready_to_req = true;
+
+
+        if(expected_response != 0 || received_response != 0){
+            // for the previous tile 
+            assert(expected_response == received_response);
+        }
 
         expected_response = 0;
         received_response = 0;

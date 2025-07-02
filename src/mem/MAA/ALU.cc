@@ -938,7 +938,7 @@ void ALUUnit::executeInstruction() {
         break;
     }
     case Status::Wait: {
-        if(TW_sent_requests == TW_received_responses && TW_sent_requests != 0){
+        if(tilereadunitSrc1->check_all_responses_received() && tilereadunitSrc2->check_all_responses_received() && tilewriteunit->check_all_responses_received()){
             state = Status::Finish;
             DPRINTF(MAAALU, "A[%d] %s: setting state to finish for request %s!\n", my_alu_id, __func__, my_instruction->print());
             scheduleNextExecution(true);

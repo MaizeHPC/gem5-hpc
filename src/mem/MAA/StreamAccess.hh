@@ -133,6 +133,7 @@ protected:
     int my_src_tile, my_dst_tile, my_cond_tile, my_min, my_max, my_stride;
     int my_received_responses, my_sent_requests;
     int TW_received_responses, TW_sent_requests;
+    int my_received_itr_max, my_set_fake_max, my_itr_max, my_itr_max_final;
     int my_stream_id;
     Tick my_SPD_read_finish_tick;
     Tick my_SPD_write_finish_tick;

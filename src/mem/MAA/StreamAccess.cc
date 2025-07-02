@@ -224,6 +224,11 @@ void StreamAccessUnit::executeInstruction() {
             tilewriteunit->createAndSendTileExReads(num_initial_reqs);
         }
 
+        my_received_itr_max = -1;
+        my_set_fake_max = -1;
+        my_itr_max = -1;
+        my_itr_max_final = -1;
+
 
         break;
     }
@@ -238,7 +243,7 @@ void StreamAccessUnit::executeInstruction() {
         fillCurrentPageInfos();
         int num_spd_condread_accesses = 0;
         int num_request_table_cacheline_accesses = 0;
-        bool broken;
+        bool broken = false;
         bool *channel_sent = new bool[maa->m_org[ADDR_CHANNEL_LEVEL]];
         while (my_current_page_info.empty() == false && request_table->is_full() == false) {
             for (auto page_it = my_current_page_info.begin(); page_it != my_current_page_info.end() && request_table->is_full() == false;) {
@@ -297,6 +302,7 @@ void StreamAccessUnit::executeInstruction() {
                             broken = true;
                             break;
                         } else {
+                            my_itr_max = std::max(my_itr_max, page_it->curr_idx);
                             DPRINTF(MAAStream, "S[%d] RequestTable: entry %d added! vaddr=0x%lx, paddr=0x%lx wid = %d\n",
                                     my_stream_id, page_it->curr_idx, block_vaddr, paddr, word_id);
 
@@ -313,6 +319,7 @@ void StreamAccessUnit::executeInstruction() {
                         } else if(my_word_size == 8){
                             tilewriteunit->setdata<uint64_t>(0, page_it->curr_idx);
                         }
+                        my_set_fake_max = std::max(my_set_fake_max, page_it->curr_idx);
                     }
                 }
                 if (broken == false) {
@@ -332,13 +339,29 @@ void StreamAccessUnit::executeInstruction() {
             }
         }
 
+        if(!broken){
+            DPRINTF(MAAStream, "S[%d] %s: my_current_page_info is empty", my_stream_id, __func__);
+            my_itr_max_final = std::max(my_set_fake_max, my_itr_max);
+            if(((my_itr_max_final ==  my_received_itr_max) || (my_itr_max_final == my_set_fake_max)) && !tilewriteunit->is_last_element_reached()){
+                tilewriteunit->mark_last_element_reached();
+            }
+        }
+
         delete[] channel_sent;
         // assume parallelism = #Channels
         updateLatency(num_spd_condread_accesses, 0, 0, num_request_table_cacheline_accesses);
         if (request_table->is_full()) {
             scheduleNextExecution();
         }
-        if (get_all_received() != get_all_sent() || !maa->allStreamPacketsSent(my_stream_id)) {
+
+        bool tileWriteUnitCheck;
+        if(dst_tile_id == -1){
+            tileWriteUnitCheck = true;
+        } else {
+            tileWriteUnitCheck = tilewriteunit->check_all_responses_received();
+        }
+
+        if ((my_received_responses != my_sent_requests) || !tileWriteUnitCheck || !maa->allStreamPacketsSent(my_stream_id)) {
             DPRINTF(MAAStream, "S[%d] %s: Waiting for responses, received (%d) != send (%d)...\n", my_stream_id, __func__, get_all_received(), get_all_sent());
         } else {
             if (my_cond_tile != -1 && maa->spd->getTileStatus(my_cond_tile,  (uint8_t)FuncUnitType::STREAM, my_stream_id) != SPD::TileStatus::Finished) {
@@ -442,6 +465,10 @@ bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached) 
     for (auto entry : entries) {
         int itr = entry.itr;
         int wid = entry.wid;
+
+        my_received_itr_max = std::max(my_received_itr_max,itr);
+
+
         switch (my_instruction->opcode) {
         case Instruction::OpcodeType::STREAM_LD: {
 
@@ -456,6 +483,13 @@ bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached) 
                 maa->spd->setData<uint64_t>(my_dst_tile, itr, dataptr_u64_typed[wid]);
                 tilewriteunit->setdata<uint64_t>(dataptr_u64_typed[wid], itr);
             }
+
+            // last element by receiving 
+            // if(dst_tile_id != -1){
+            if(my_itr_max_final != -1 && (my_itr_max_final ==  my_received_itr_max || my_itr_max_final == my_set_fake_max) && !tilewriteunit->is_last_element_reached()){
+                tilewriteunit->mark_last_element_reached();
+            }
+            // }
 
             // if (my_word_size == 4) {
             //     DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %u\n", my_stream_id, __func__, my_dst_tile, itr, dataptr_u32_typed[wid]);
@@ -527,9 +561,9 @@ bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached) 
         maa->sendPacket(FuncUnitType::STREAM, my_stream_id, write_pkt, maa->getClockEdge(total_latency), true);
     }
 
-    if(my_received_responses == my_sent_requests){
-        tilewriteunit->mark_last_element_reached();
-    }
+    // if(my_received_responses == my_sent_requests){
+    //     tilewriteunit->mark_last_element_reached();
+    // }
 
     if (was_request_table_full) {
         scheduleNextExecution(true);

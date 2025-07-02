@@ -27,6 +27,9 @@ namespace gem5 {
         block_size = 64;
         TileSize = 16384;
         my_translation_done = false;
+
+        expected_response = 0;
+        received_response = 0;
     };
 
     void TileWrite::set(int _TileID, uint32_t _wordsize, ContextID _CID, Addr _PC, 
@@ -42,6 +45,11 @@ namespace gem5 {
         words_per_block = block_size/wordsize;
         DPRINTF(MAATileWrite, "TW[%d] %s %s: TileID:%d words_per_block is %x\n", my_indirect_id, __func__,func_unit_names[static_cast<int>(funcUnit)], TileID, words_per_block);
         DPRINTF(MAATileWrite, "TW[%d] %s %s: TileID:%d wordsize %x\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)],  TileID, wordsize);
+
+        if(expected_response != 0 || received_response != 0){
+            // for the previous tile 
+            assert(expected_response == received_response);
+        }
 
         ReadEx_current = 0;
         write_current = 0;
@@ -79,6 +87,7 @@ namespace gem5 {
     }
 
     void TileWrite::mark_last_element_reached(){
+        DPRINTF(MAATileWrite, "TW[%d] %s %s: setting last element reached flag\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)]);
         last_elemet_set =  true;
         write_tile_data();
     }
@@ -88,7 +97,8 @@ namespace gem5 {
     }
 
     bool TileWrite::check_all_responses_received(){
-        return (expected_response == received_response) && all_eleements_written;
+        DPRINTF(MAATileWrite, "TW[%d] %s %s: expected_response:%d received_response:%d all_eleements_written:%d last_elemet_set:%d\n", my_indirect_id, __func__, expected_response, received_response, all_eleements_written, last_elemet_set);
+        return (expected_response == received_response) && all_eleements_written && last_elemet_set;
     }
 
     void TileWrite::createAndSendTileExReads(int reqs_count){

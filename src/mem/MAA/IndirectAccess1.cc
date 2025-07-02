@@ -923,7 +923,13 @@ void IndirectAccessUnit::executeInstruction() {
 
         int offset_cache_tile_write = CacheTileWrite ? CacheTileWriteCount : 0;
         // if (maa->allIndirectPacketsSent(my_indirect_id) && get_all_received() == get_all_expected() + offset_cache_tile_write) {
-        if (maa->allIndirectPacketsSent(my_indirect_id) && (my_expected_responses == my_received_responses)  && tilewriteunit->check_all_responses_received()) {
+        bool tileWriteUnitCheck = (my_dst_tile == -1) ? true : tilewriteunit->check_all_responses_received();
+        bool tileReadIdxCheck = tilereadunitIdx->check_all_responses_received();
+        bool tileReadSrcCheck = (my_src_tile == -1) ? true : tilereadunitSrc->check_all_responses_received();
+
+
+
+        if (maa->allIndirectPacketsSent(my_indirect_id) && (my_expected_responses == my_received_responses)  && tileWriteUnitCheck && tileReadIdxCheck && tileReadSrcCheck) {
             if (scheduleNextExecution()) {
                 DPRINTF(MAAIndirect, "I[%d] %s: requesting is still not ready, returning!\n", my_indirect_id, __func__);
                 break;
@@ -958,6 +964,12 @@ void IndirectAccessUnit::executeInstruction() {
         panic_if(my_idx_tile_ready == false, "I[%d] %s: idx tile[%d] is not ready!\n", my_indirect_id, __func__, my_idx_tile);
         panic_if(my_src_tile_ready == false, "I[%d] %s: src tile[%d] is not ready!\n", my_indirect_id, __func__, my_src_tile);
         panic_if(LoadsCacheHitRespondingTimeHistory.size() != 0, "I[%d] %s: LoadsCacheHitRespondingTimeHistory is not empty!\n", my_indirect_id, __func__);
+
+
+        for (const auto& pair : LoadsCacheHitAccessingTimeHistory) {
+            DPRINTF(MAAIndirect, "I[%d] %s: first:%x second:%ld!\n", my_indirect_id, __func__, pair.first, pair.second);
+            // std::cout << pair.first << " => " << pair.second << std::endl;
+        }
         panic_if(LoadsCacheHitAccessingTimeHistory.size() != 0, "I[%d] %s: LoadsCacheHitAccessingTimeHistory is not empty!\n", my_indirect_id, __func__);
         panic_if(LoadsMemAccessingTimeHistory.size() != 0, "I[%d] %s: LoadsMemAccessingTimeHistory is not empty!\n", my_indirect_id, __func__);
         DPRINTF(MAAIndirect, "I[%d] %s: state set to finish for request %s!\n", my_indirect_id, __func__, my_instruction->print());
@@ -1052,6 +1064,7 @@ void IndirectAccessUnit::cacheWritePacketSent(Addr addr) {
 
 
 void IndirectAccessUnit::recv_updateTimeHistory(const Addr addr, bool is_block_cached){
+    DPRINTF(MAAIndirect, "I[%d] %s: addr:%x!\n", my_indirect_id, __func__, addr);
     if (is_block_cached) {
         if (LoadsCacheHitRespondingTimeHistory.find(addr) != LoadsCacheHitRespondingTimeHistory.end()) {
             (*maa->stats.IND_LoadsCacheHitRespondingLatency[my_indirect_id]) += maa->getTicksToCycles(curTick() - LoadsCacheHitRespondingTimeHistory[addr]);
@@ -1079,6 +1092,9 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
     // if (RT_idx == my_RT_idx)
     //     was_full = RT[my_RT_config][RT_idx].is_full();
     std::vector<RequestTableEntry> entries = request_table->get_entries(addr);
+    
+
+   
 
     if(my_dst_tile != -1) {
         if(tilewriteunit->recv_data(addr, dataptr, is_block_cached)){
@@ -1100,12 +1116,17 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
             return true;
         }
     }
+
+    recv_updateTimeHistory(addr, is_block_cached);
+
+
+    
     // bool is_full = false;
     // if (RT_idx == my_RT_idx)
     //     is_full = RT[my_RT_config][RT_idx].is_full();
     // DPRINTF(MAAIndirect, "I[%d] %s: %d entries received for addr(0x%lx), grow(x%lx) from T[%d]!\n", my_indirect_id, __func__, entries.size(), addr, grow_addr, RT_idx);
    
-    recv_updateTimeHistory(addr, is_block_cached);
+    
 
 
     // if(ReadExTile_CAM[addr] == true){
