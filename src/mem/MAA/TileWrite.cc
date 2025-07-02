@@ -97,7 +97,7 @@ namespace gem5 {
     }
 
     bool TileWrite::check_all_responses_received(){
-        DPRINTF(MAATileWrite, "TW[%d] %s %s: expected_response:%d received_response:%d all_eleements_written:%d last_elemet_set:%d\n", my_indirect_id, __func__, expected_response, received_response, all_eleements_written, last_elemet_set);
+        DPRINTF(MAATileWrite, "TW[%d] %s %s: expected_response:%d received_response:%d all_eleements_written:%d last_elemet_set:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], expected_response, received_response, all_eleements_written, last_elemet_set);
         return (expected_response == received_response) && all_eleements_written && last_elemet_set;
     }
 
@@ -187,7 +187,7 @@ namespace gem5 {
     uint32_t TileWrite::write_tile_data(){
         int count = 0;
         DPRINTF(MAATileWrite, "TW[%d] %s %s: TileID:%d trying to write a tile data, my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, my_max);
-        int bound_max = (my_max/words_per_block + 1) * words_per_block;
+        int bound_max = ((my_max + words_per_block - 1)/words_per_block) * words_per_block;
         bound_max = (bound_max > TileSize) ? TileSize : bound_max;
         all_eleements_written = true;
         for(int i = write_current; i < bound_max; i += words_per_block){

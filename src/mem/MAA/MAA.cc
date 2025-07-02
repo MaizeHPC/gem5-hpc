@@ -434,6 +434,7 @@ void MAA::issueInstruction() {
                             streamAccessIdle[maa_id] = false;
                             are_all_units_idle = false;
                             issued = true;
+                            DPRINTF(MAA, "STREAM: scheduling instruction:%s n", inst->print());
                         }
                     }
                     break;
@@ -451,6 +452,7 @@ void MAA::issueInstruction() {
                             indirectAccessIdle[maa_id] = false;
                             are_all_units_idle = false;
                             issued = true;
+                            DPRINTF(MAA, "INDIRECT: scheduling instruction:%s n", inst->print());
                         }
                     }
                     break;
@@ -468,6 +470,7 @@ void MAA::issueInstruction() {
                             aluUnitsIdle[maa_id] = false;
                             are_all_units_idle = false;
                             issued = true;
+                            DPRINTF(MAA, "ALU: scheduling instruction:%s n", inst->print());
                         } else {
                             break;
                         }
@@ -490,6 +493,7 @@ void MAA::issueInstruction() {
                             rangeUnitsIdle[maa_id] = false;
                             are_all_units_idle = false;
                             issued = true;
+                            DPRINTF(MAA, "RANGE: scheduling instruction:%s n", inst->print());
                         }
                     }
                     break;
