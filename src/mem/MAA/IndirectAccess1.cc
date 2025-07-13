@@ -44,6 +44,7 @@ IndirectAccessUnit::IndirectAccessUnit()
     my_RT_req_sent = nullptr;
     my_RT_slice_order = nullptr;
     my_instruction = nullptr;
+    fetch_tiles_from_cache = false;
 }
 IndirectAccessUnit::~IndirectAccessUnit() {
 
@@ -492,6 +493,9 @@ void IndirectAccessUnit::fillRequestTable(bool &finished, bool &waitForFinish, b
                 maa->spd->setSize(my_dst_tile, my_i);
             }
             if (checkReadyForFinish()) {
+                if(my_dst_tile != -1){
+                    tilewriteunit->set_max_element(my_max);
+                }
                 DPRINTF(MAAIndirect, "I[%d] %s: reached finished status!\n", my_indirect_id, __func__);
                 finished = true;
                 break;
@@ -520,18 +524,27 @@ void IndirectAccessUnit::fillRequestTable(bool &finished, bool &waitForFinish, b
         uint64_t data_64;
         bool src_avail;
         
-        bool idx_avail = tilereadunitIdx->getData<uint32_t>(idx, my_i, false);
-        if(my_src_tile != -1){
-            if(my_word_size ==4){
-                src_avail = tilereadunitSrc->getData<uint32_t>(data_32, my_i, false);
-            } else {
-                src_avail = tilereadunitSrc->getData<uint64_t>(data_64, my_i, false);
+        if(fetch_tiles_from_cache) {
+            bool idx_avail = tilereadunitIdx->getData<uint32_t>(idx, my_i, false);
+            if(my_src_tile != -1){
+                if(my_word_size ==4){
+                    src_avail = tilereadunitSrc->getData<uint32_t>(data_32, my_i, false);
+                } else {
+                    src_avail = tilereadunitSrc->getData<uint64_t>(data_64, my_i, false);
+                }
             }
-        }
 
-        if(!idx_avail || !src_avail){
-            waitForElement = true;
-            break;
+            if(!idx_avail || !src_avail){
+                waitForElement = true;
+                break;
+            }
+        } else {
+            idx = maa->spd->getData<uint32_t>(my_idx_tile, my_i);
+            if(my_word_size ==4){
+                    data_32 = tilereadunitIdx->getData<uint32_t>(my_src_tile, my_i);
+                } else {
+                    data_64 = tilereadunitIdx->getData<uint64_t>(my_src_tile, my_i);
+            }
         }
 
 
@@ -652,12 +665,14 @@ void IndirectAccessUnit::fillRequestTable(bool &finished, bool &waitForFinish, b
         }
 
         // remove the elements 
-        tilereadunitIdx->getData<uint32_t>(idx, my_i, true);
-        if(my_src_tile != -1){
-            if(my_word_size ==4){
-                tilereadunitSrc->getData<uint32_t>(data_32, my_i, true);
-            } else {
-                tilereadunitSrc->getData<uint64_t>(data_64, my_i, true);
+        if(fetch_tiles_from_cache) {
+            tilereadunitIdx->getData<uint32_t>(idx, my_i, true);
+            if(my_src_tile != -1){
+                if(my_word_size ==4){
+                    tilereadunitSrc->getData<uint32_t>(data_32, my_i, true);
+                } else {
+                    tilereadunitSrc->getData<uint64_t>(data_64, my_i, true);
+                }
             }
         }
         // if(my_idx_tile != -1){
@@ -778,14 +793,16 @@ void IndirectAccessUnit::executeInstruction() {
             tilewriteunit->createAndSendTileExReads(num_initial_reqs);
         }
 
-        if(my_idx_tile != -1){
-            tilereadunitIdx->set(my_idx_tile, 4, my_instruction->CID, my_instruction->PC, block_size); // IDX tile is always 4 bytes
-            tilereadunitIdx->createAndSendTileExReads(num_initial_reqs);
-        }
+        if(fetch_tiles_from_cache){
+            if(my_idx_tile != -1){
+                tilereadunitIdx->set(my_idx_tile, 4, my_instruction->CID, my_instruction->PC, block_size); // IDX tile is always 4 bytes
+                tilereadunitIdx->createAndSendTileExReads(num_initial_reqs);
+            }
 
-        if(my_src_tile != -1){
-            tilereadunitSrc->set(my_src_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size); // IDX tile is always 4 bytes
-            tilereadunitSrc->createAndSendTileExReads(num_initial_reqs);
+            if(my_src_tile != -1){
+                tilereadunitSrc->set(my_src_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size); // IDX tile is always 4 bytes
+                tilereadunitSrc->createAndSendTileExReads(num_initial_reqs);
+            }
         }
 
         state = Status::Fill;
@@ -913,19 +930,19 @@ void IndirectAccessUnit::executeInstruction() {
         }
 
 
-        if(my_dst_tile != -1){
-            if(((my_max != -1 && my_max == my_received_itr_max+1) || my_max == set_fake_max + 1) && !tilewriteunit->is_last_element_reached()){
-                DPRINTF(MAAIndirect, "I[%d] %s itr:%d: marking the last element\n", my_indirect_id, __func__, my_received_itr_max);
-                tilewriteunit->mark_last_element_reached();
-            }
-        }
+        // if(my_dst_tile != -1){
+        //     if(((my_max != -1 && my_max == my_received_itr_max+1) || my_max == set_fake_max + 1) && !tilewriteunit->is_last_element_reached()){
+        //         DPRINTF(MAAIndirect, "I[%d] %s itr:%d: marking the last element\n", my_indirect_id, __func__, my_received_itr_max);
+        //         tilewriteunit->mark_last_element_reached();
+        //     }
+        // }
         
 
         int offset_cache_tile_write = CacheTileWrite ? CacheTileWriteCount : 0;
         // if (maa->allIndirectPacketsSent(my_indirect_id) && get_all_received() == get_all_expected() + offset_cache_tile_write) {
         bool tileWriteUnitCheck = (my_dst_tile == -1) ? true : tilewriteunit->check_all_responses_received();
-        bool tileReadIdxCheck = tilereadunitIdx->check_all_responses_received();
-        bool tileReadSrcCheck = (my_src_tile == -1) ? true : tilereadunitSrc->check_all_responses_received();
+        bool tileReadIdxCheck = fetch_tiles_from_cache ? tilereadunitIdx->check_all_responses_received() : true;
+        bool tileReadSrcCheck = (my_src_tile == -1 || !fetch_tiles_from_cache) ? true : tilereadunitSrc->check_all_responses_received();
 
 
 
@@ -1103,17 +1120,19 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
         }
     }
 
-    if(my_idx_tile != -1) {
-        if(tilereadunitIdx->recv_data(addr, dataptr, is_block_cached)){
-            scheduleNextExecution(true);
-            return true;
+    if(fetch_tiles_from_cache){
+        if(my_idx_tile != -1) {
+            if(tilereadunitIdx->recv_data(addr, dataptr, is_block_cached)){
+                scheduleNextExecution(true);
+                return true;
+            }
         }
-    }
 
-    if(my_src_tile != -1) {
-        if(tilereadunitSrc->recv_data(addr, dataptr, is_block_cached)){
-            scheduleNextExecution(true);
-            return true;
+        if(my_src_tile != -1) {
+            if(tilereadunitSrc->recv_data(addr, dataptr, is_block_cached)){
+                scheduleNextExecution(true);
+                return true;
+            }
         }
     }
 
@@ -1187,12 +1206,12 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
 
         // sending the signal to write last cache line
         my_received_itr_max = std::max(itr, my_received_itr_max);
-        if(my_dst_tile != -1){
-            if(((my_max != -1 && my_max == itr+1) || my_max == set_fake_max + 1) && !tilewriteunit->is_last_element_reached()){
-                DPRINTF(MAAIndirect, "I[%d] %s itr:%d: marking the last element\n", my_indirect_id, __func__, itr);
-                tilewriteunit->mark_last_element_reached();
-            }
-        }
+        // if(my_dst_tile != -1){
+        //     if(((my_max != -1 && my_max == itr+1) || my_max == set_fake_max + 1) && !tilewriteunit->is_last_element_reached()){
+        //         DPRINTF(MAAIndirect, "I[%d] %s itr:%d: marking the last element\n", my_indirect_id, __func__, itr);
+        //         tilewriteunit->mark_last_element_reached();
+        //     }
+        // }
         
 
         // // sent the data in order

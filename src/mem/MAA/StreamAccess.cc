@@ -244,6 +244,7 @@ void StreamAccessUnit::executeInstruction() {
         int num_spd_condread_accesses = 0;
         int num_request_table_cacheline_accesses = 0;
         bool broken = false;
+        bool any_broken = false;
         bool *channel_sent = new bool[maa->m_org[ADDR_CHANNEL_LEVEL]];
         while (my_current_page_info.empty() == false && request_table->is_full() == false) {
             for (auto page_it = my_current_page_info.begin(); page_it != my_current_page_info.end() && request_table->is_full() == false;) {
@@ -257,6 +258,7 @@ void StreamAccessUnit::executeInstruction() {
                             my_all_page_info.insert(*page_it);
                             page_it = my_current_page_info.erase(page_it);
                             broken = true;
+                            any_broken = true;
                             break;
                         }
                         num_spd_condread_accesses++;
@@ -267,6 +269,7 @@ void StreamAccessUnit::executeInstruction() {
                             my_all_page_info.insert(*page_it);
                             page_it = my_current_page_info.erase(page_it);
                             broken = true;
+                            any_broken = true;
                             break;
                         }
                     }
@@ -292,6 +295,7 @@ void StreamAccessUnit::executeInstruction() {
                             DPRINTF(MAAStream, "S[%d] RequestTable: entry %d not added because channel already pushed! paddr=0x%lx\n", my_stream_id, page_it->curr_idx, paddr);
                             page_it++;
                             broken = true;
+                            any_broken = true;
                             break;
                         }
                         uint16_t word_id = (vaddr - block_vaddr) / my_word_size;
@@ -300,6 +304,7 @@ void StreamAccessUnit::executeInstruction() {
                             (*maa->stats.STR_NumRTFull[my_stream_id])++;
                             page_it++;
                             broken = true;
+                            any_broken = true;
                             break;
                         } else {
                             my_itr_max = std::max(my_itr_max, page_it->curr_idx);
@@ -339,12 +344,13 @@ void StreamAccessUnit::executeInstruction() {
             }
         }
 
-        if(!broken){
+        if(!any_broken && !request_table->is_full()){
             DPRINTF(MAAStream, "S[%d] %s: my_current_page_info is empty", my_stream_id, __func__);
             my_itr_max_final = std::max(my_set_fake_max, my_itr_max);
-            if(((my_itr_max_final ==  my_received_itr_max) || (my_itr_max_final == my_set_fake_max)) && !tilewriteunit->is_last_element_reached()){
-                tilewriteunit->mark_last_element_reached();
-            }
+            tilewriteunit->set_max_element(my_itr_max_final+1); // adding one to get max count
+            // if(((my_itr_max_final ==  my_received_itr_max) || (my_itr_max_final == my_set_fake_max)) && !tilewriteunit->is_last_element_reached()){
+            //     tilewriteunit->mark_last_element_reached();
+            // }
         }
 
         delete[] channel_sent;
@@ -428,9 +434,9 @@ void StreamAccessUnit::readPacketSent(Addr addr) {
 void StreamAccessUnit::writePacketSent(Addr addr) {
     DPRINTF(MAAStream, "S[%d] %s: cache write packet 0x%lx sent!\n", my_stream_id, __func__, addr);
     my_received_responses++;
-    if(my_received_responses == my_sent_requests){
-        tilewriteunit->mark_last_element_reached();
-    }
+    // if(my_received_responses == my_sent_requests){
+    //     tilewriteunit->mark_last_element_reached();
+    // }
     if (maa->allStreamPacketsSent(my_stream_id) && (get_all_received() == get_all_sent() )) {
         DPRINTF(MAAStream, "S[%d] %s: all responses received, calling execution again in state %s!\n", my_stream_id, __func__, status_names[(int)state]);
         scheduleNextExecution(true);
@@ -486,9 +492,9 @@ bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached) 
 
             // last element by receiving 
             // if(dst_tile_id != -1){
-            if(my_itr_max_final != -1 && (my_itr_max_final ==  my_received_itr_max || my_itr_max_final == my_set_fake_max) && !tilewriteunit->is_last_element_reached()){
-                tilewriteunit->mark_last_element_reached();
-            }
+            // if(my_itr_max_final != -1 && (my_itr_max_final ==  my_received_itr_max || my_itr_max_final == my_set_fake_max) && !tilewriteunit->is_last_element_reached()){
+            //     tilewriteunit->mark_last_element_reached();
+            // }
             // }
 
             // if (my_word_size == 4) {

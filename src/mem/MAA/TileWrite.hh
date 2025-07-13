@@ -70,6 +70,7 @@ class TileWrite : public BaseMMU::Translation {
     std::vector<int>& tile_write_counter;
     FuncUnitType funcUnit;
 
+    bool unitInitialized;
     bool last_elemet_set;
     int set_data_count;
     bool all_eleements_written;
@@ -95,6 +96,7 @@ class TileWrite : public BaseMMU::Translation {
         uint32_t write_tile_data();
         void markDelayed() override {};
         void mark_last_element_reached();
+        void set_max_element(int max);
         bool is_last_element_reached();
         bool check_all_responses_received();
 

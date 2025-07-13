@@ -926,12 +926,12 @@ void ALUUnit::executeInstruction() {
                     } 
                 }
             }
-            my_i++;
+            my_i++; 
         }
         updateLatency(num_spd_read_data_accesses, num_spd_read_cond_accesses, num_spd_write_accesses, num_alu_accesses);
         DPRINTF(MAAALU, "A[%d] %s: setting state to Wait for request %s!\n", my_alu_id, __func__, my_instruction->print());
         if(my_max != -1 && my_i == my_max){
-            tilewriteunit->mark_last_element_reached();
+            tilewriteunit->set_max_element(my_max);
         }
         state = Status::Wait;
         scheduleNextExecution(true);
