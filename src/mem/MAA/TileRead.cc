@@ -101,6 +101,8 @@ namespace gem5 {
         // tile_write_counter[TileID]
         if(ready_to_req){
             DPRINTF(MAATileRead, "TR[%d] %s %s: TileID:%d i=%d Write count is %d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, ReadEx_current, tile_write_counter[TileID]);
+        } else {
+            return;
         }
         for(int i = ReadEx_current; (i < TileSize) && (i < ReadEx_current + reqs_count*words_per_block) && (i <  tile_write_counter[TileID]) && ready_to_req; i += words_per_block){ // && i < target_tile_ready_counter
             Addr v_block_addr = getVirtualAddress(i);
@@ -117,11 +119,11 @@ namespace gem5 {
             CAM[p_block_addr]  = twrm; // this will be replaced with an address range check
             readex_req->setRegion(maa->CacheTiles_rangeID);
             PacketPtr readex_pkt;
-            readex_pkt = new Packet(readex_req, MemCmd::ReadExReq);
+            readex_pkt = new Packet(readex_req, MemCmd::ReadReq);
             readex_pkt->headerDelay = readex_pkt->payloadDelay = 0;
             readex_pkt->allocate();
             expected_response++;
-            DPRINTF(MAATileRead, "TR[%d] %s: TileID:%d created %s for mem\n", my_indirect_id, __func__, TileID, readex_pkt->print());
+            DPRINTF(MAATileRead, "TR[%d] %s: TileID:%d i:%d p_addr:%x created %s for mem\n", my_indirect_id, __func__, TileID, i, p_block_addr, readex_pkt->print());
             maa->sendPacket(funcUnit, my_indirect_id, readex_pkt, maa->getClockEdge(Cycles(i-ReadEx_current + 1)), true);
 
             ReadEx_current = ReadEx_current + words_per_block;
@@ -142,6 +144,15 @@ namespace gem5 {
                 twrm.ReadExRecv = true;
                 memcpy(&twrm.data[0], dataptr, 64);
                 CAM[addr] = twrm;
+                for(int i =0; i < words_per_block; i++){
+                    if(wordsize == 4){
+                        DPRINTF(MAATileRead, "TR[%d] %s %s TileId:%d addr:%x  offset:%d data: %u/%d/%f \n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, my_max, addr, i,  *(uint32_t *)&dataptr[i*wordsize], *(int32_t *)&dataptr[i*wordsize], *(float *)&dataptr[i*wordsize]);
+                    } else if(wordsize == 8) {
+                        DPRINTF(MAATileRead, "TR[%d] %s %s TileId:%d addr:%x  offset:%d data: %lu/%ld/%lf \n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, my_max, addr, i,  *(uint64_t *)&dataptr[i*wordsize], *(int64_t *)&dataptr[i*wordsize], *(double *)&dataptr[i*wordsize]);
+                    }
+                }
+
+
                 ret = true;
                 if(funcUnit == FuncUnitType::INDIRECT){
                     maa->indirectAccessUnits[0].recv_updateTimeHistory(addr, is_block_cached);

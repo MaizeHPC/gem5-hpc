@@ -44,7 +44,7 @@ IndirectAccessUnit::IndirectAccessUnit()
     my_RT_req_sent = nullptr;
     my_RT_slice_order = nullptr;
     my_instruction = nullptr;
-    fetch_tiles_from_cache = false;
+    fetch_tiles_from_cache = true;
 }
 IndirectAccessUnit::~IndirectAccessUnit() {
 
@@ -540,15 +540,28 @@ void IndirectAccessUnit::fillRequestTable(bool &finished, bool &waitForFinish, b
             }
         } else {
             idx = maa->spd->getData<uint32_t>(my_idx_tile, my_i);
-            if(my_word_size ==4){
-                    data_32 = tilereadunitIdx->getData<uint32_t>(my_src_tile, my_i);
-                } else {
-                    data_64 = tilereadunitIdx->getData<uint64_t>(my_src_tile, my_i);
+            if(my_src_tile != -1){
+                if(my_word_size ==4){
+                        data_32 = maa->spd->getData<uint32_t>(my_src_tile, my_i);
+                    } else {
+                        data_64 = maa->spd->getData<uint64_t>(my_src_tile, my_i);
+                }
             }
         }
 
 
         if (my_cond_tile == -1 || maa->spd->getData<uint32_t>(my_cond_tile, my_i) != 0) {
+
+            if(fetch_tiles_from_cache) {
+                panic_if(idx != maa->spd->getData<uint32_t>(my_idx_tile, my_i), "Scratch pad:%d, Cache Tile:%d\n", maa->spd->getData<uint32_t>(my_idx_tile, my_i), idx);
+                if(my_src_tile != -1){
+                    if(my_word_size ==4){
+                        panic_if(data_32 != maa->spd->getData<uint32_t>(my_src_tile, my_i), "Scratch pad:%d, Cache Tile:%d\n", maa->spd->getData<uint32_t>(my_src_tile, my_i), data_32);
+                    } else {
+                        panic_if(data_64 != maa->spd->getData<uint64_t>(my_src_tile, my_i), "Scratch pad:%d, Cache Tile:%d\n", maa->spd->getData<uint64_t>(my_src_tile, my_i), data_64);
+                    }
+                }
+            }
 
             num_spd_read_condidx_accesses++;
             Addr vaddr = my_base_addr + my_word_size * idx;
@@ -658,9 +671,9 @@ void IndirectAccessUnit::fillRequestTable(bool &finished, bool &waitForFinish, b
             set_fake_max = std::max(set_fake_max, my_i);
             maa->spd->setFakeData(my_dst_tile, my_i, my_word_size);
             if(my_word_size == 4){
-                tilewriteunit->setdata<uint32_t>(0, my_i);
+                tilewriteunit->setdata<uint32_t>(5, my_i);
             } else if(my_word_size == 8){
-                tilewriteunit->setdata<uint64_t>(0, my_i);
+                tilewriteunit->setdata<uint64_t>(5, my_i);
             }
         }
 

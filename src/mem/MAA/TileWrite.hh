@@ -105,7 +105,6 @@ class TileWrite : public BaseMMU::Translation {
             
             assert(sizeof(T) == wordsize);
 
-            DPRINTF(MAATileWrite, "TW[%d] %s %s TileID:%d i:%d : setData set_data_count:%d \n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, element_id, set_data_count);
             // assert(element_id == set_data_count);
 
             struct TileWriteReqMeta twrm;
@@ -115,6 +114,8 @@ class TileWrite : public BaseMMU::Translation {
             Addr p_block_addr = translatePacket(v_block_addr_id);
             
             
+            DPRINTF(MAATileWrite, "TW[%d] %s %s TileID:%d i:%d : setData set_data_count:%d p_addr:%x \n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, element_id, set_data_count, p_block_addr);
+
 
             if(CAM.find(p_block_addr) != CAM.end()){
                 twrm = CAM[p_block_addr];

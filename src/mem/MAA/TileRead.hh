@@ -119,7 +119,13 @@ class TileRead : public BaseMMU::Translation {
                         }
                         bool ret;
                         if(pop_data_counter < tile_write_counter[TileID]){
-                            DPRINTF(MAATileRead, "TR[%d] %s %s TileId:%d pop_data_counter:%d element_id:%d : data was there my_max:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, pop_data_counter, element_id, my_max);
+                            // DPRINTF(MAATileRead, "TR[%d] %s %s TileId:%d pop_data_counter:%d element_id:%d : data was there my_max:%d addr:%x\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, pop_data_counter, element_id, my_max, p_block_addr);
+                            if(wordsize == 4){
+                                DPRINTF(MAATileRead, "TR[%d] %s %s TileId:%d pop_data_counter:%d element_id:%d : data was there my_max:%d addr:%x data: %u/%d/%f \n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, pop_data_counter, element_id, my_max, p_block_addr, *(uint32_t *)&data, *(int32_t *)&data, *(float *)&data);
+                            } else if( wordsize == 8){
+                                DPRINTF(MAATileRead, "TR[%d] %s %s TileId:%d pop_data_counter:%d element_id:%d : data was there my_max:%d addr:%x data: %lu/%ld/%lf \n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, pop_data_counter, element_id, my_max, p_block_addr, *(uint64_t *)&data, *(int64_t *)&data, *(double *)&data);
+
+                            }
                             assert(pop_data_counter == element_id);
                             ret = true;
 

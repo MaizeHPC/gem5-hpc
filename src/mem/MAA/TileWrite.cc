@@ -139,8 +139,7 @@ namespace gem5 {
             readex_pkt->allocate();
             expected_response++;
             maa->sendPacket(funcUnit, my_indirect_id, readex_pkt, maa->getClockEdge(Cycles(i-ReadEx_current + 1)), true);
-            DPRINTF(MAATileWrite, "TW[%d] %s %s: TileID:%d i=%d created %s for mem\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, i, readex_pkt->print());
-        }
+            DPRINTF(MAATileRead, "TW[%d] %s: TileID:%d i:%d p_addr:%x created %s for mem\n", my_indirect_id, __func__, TileID, i, p_block_addr, readex_pkt->print());        }
         ReadEx_current = ReadEx_current + reqs_count*words_per_block;
     }
 

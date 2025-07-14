@@ -88,6 +88,8 @@ protected:
                        int num_spd_write_accesses,
                        int num_alu_accesses);
     EventFunctionWrapper executeInstructionEvent;
+
+    bool fetch_tiles_from_cache;
 };
 } // namespace gem5
 

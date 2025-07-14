@@ -21,6 +21,7 @@ namespace gem5 {
 RangeFuserUnit::RangeFuserUnit()
     : executeInstructionEvent([this] { executeInstruction(); }, name()) {
     my_instruction = nullptr;
+    fetch_tiles_from_cache = false;
 }
 void RangeFuserUnit::allocate(unsigned int _num_tile_elements, MAA *_maa, int _my_range_id) {
     state = Status::Idle;
@@ -142,12 +143,14 @@ void RangeFuserUnit::executeInstruction() {
             tilewriteunit_1->createAndSendTileExReads(num_initial_reqs);
         }
 
-        if(my_min_tile != -1){
-            tilereadunitMin->set(my_min_tile, my_word_size,  my_instruction->CID, my_instruction->PC, block_size, my_last_i);
-        }
+        if(fetch_tiles_from_cache){
+            if(my_min_tile != -1){
+                tilereadunitMin->set(my_min_tile, my_word_size,  my_instruction->CID, my_instruction->PC, block_size, my_last_i);
+            }
 
-        if(my_max_tile != -1){
-            tilereadunitMax->set(my_max_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size, my_last_i);
+            if(my_max_tile != -1){
+                tilereadunitMax->set(my_max_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size, my_last_i);
+            }
         }
 
 
@@ -220,17 +223,21 @@ void RangeFuserUnit::executeInstruction() {
             //     break;
             // }
             bool cond_ready = my_cond_tile == -1 || maa->spd->getElementFinished(my_cond_tile, my_last_i, 4, (uint8_t)FuncUnitType::RANGE, my_range_id);
-            // bool min_ready = cond_ready && maa->spd->getElementFinished(my_min_tile, my_last_i, 4, (uint8_t)FuncUnitType::RANGE, my_range_id);
-            // bool max_ready = min_ready && maa->spd->getElementFinished(my_max_tile, my_last_i, 4, (uint8_t)FuncUnitType::RANGE, my_range_id);
+            bool min_ready; // = cond_ready && maa->spd->getElementFinished(my_min_tile, my_last_i, 4, (uint8_t)FuncUnitType::RANGE, my_range_id);
+            bool max_ready; // = min_ready && maa->spd->getElementFinished(my_max_tile, my_last_i, 4, (uint8_t)FuncUnitType::RANGE, my_range_id);
 
 
             // uint32_t data1_32, data2_32;
             uint32_t my_min_j; // = maa->spd->getData<uint32_t>(my_min_tile, my_last_i);
             uint32_t my_max_j; // = maa->spd->getData<uint32_t>(my_max_tile, my_last_i);
-            bool min_ready = tilereadunitMin->getData<uint32_t>(my_min_j, my_last_i, false);
-            bool max_ready = tilereadunitMax->getData<uint32_t>(my_max_j, my_last_i, false);
 
-            // }
+            if(fetch_tiles_from_cache){
+                min_ready = tilereadunitMin->getData<uint32_t>(my_min_j, my_last_i, false);
+                max_ready = tilereadunitMax->getData<uint32_t>(my_max_j, my_last_i, false);
+            } else {
+                min_ready = cond_ready && maa->spd->getElementFinished(my_min_tile, my_last_i, 4, (uint8_t)FuncUnitType::RANGE, my_range_id);
+                max_ready = min_ready && maa->spd->getElementFinished(my_max_tile, my_last_i, 4, (uint8_t)FuncUnitType::RANGE, my_range_id);
+            }
 
 
 
@@ -245,6 +252,15 @@ void RangeFuserUnit::executeInstruction() {
                 updateLatency(num_spd_read_accesses, num_spd_write_accesses, num_computed_words);
                 return;
             }
+
+            if(fetch_tiles_from_cache){
+                assert(my_min_j == maa->spd->getData<uint32_t>(my_min_tile, my_last_i));
+                assert(my_max_j == maa->spd->getData<uint32_t>(my_max_tile, my_last_i));
+            } else {
+                my_min_j = maa->spd->getData<uint32_t>(my_min_tile, my_last_i);
+                my_max_j = maa->spd->getData<uint32_t>(my_max_tile, my_last_i);
+            }
+
             if (my_cond_tile != -1) {
                 num_spd_read_accesses++;
             }
@@ -282,9 +298,10 @@ void RangeFuserUnit::executeInstruction() {
                     break;
                 }
             }
-
-            tilereadunitMin->getData<uint32_t>(my_min_j, my_last_i, true);
-            tilereadunitMax->getData<uint32_t>(my_max_j, my_last_i, true);
+            if(fetch_tiles_from_cache){
+                tilereadunitMin->getData<uint32_t>(my_min_j, my_last_i, true);
+                tilereadunitMax->getData<uint32_t>(my_max_j, my_last_i, true);
+            }
             my_last_i++;
         }
         // We have generated a tile of i and j values successfully
@@ -363,8 +380,12 @@ bool RangeFuserUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached){
     bool ret0 = tilewriteunit_0->recv_data(addr, dataptr, cached);
     bool ret1 = tilewriteunit_1->recv_data(addr, dataptr, cached);
 
-    bool ret2 = tilereadunitMin->recv_data(addr, dataptr, cached);
-    bool ret3 = tilereadunitMax->recv_data(addr, dataptr, cached);
+    bool ret2 = false;
+    bool ret3 = false;
+    if(fetch_tiles_from_cache) {
+        ret2 = tilereadunitMin->recv_data(addr, dataptr, cached);
+        ret3 = tilereadunitMax->recv_data(addr, dataptr, cached);
+    }
 
     // should receive the response from only one data structure 
     int sum = (int)ret0 + (int)ret1 + (int)ret2 + (int)ret3;

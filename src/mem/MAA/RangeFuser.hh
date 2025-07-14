@@ -75,6 +75,8 @@ protected:
                        int num_compute_accesses);
     void executeInstruction();
     EventFunctionWrapper executeInstructionEvent;
+
+    bool fetch_tiles_from_cache;
 };
 } // namespace gem5
 

@@ -32,7 +32,7 @@ void MAA::sendPacket(FuncUnitType funcUnit, uint8_t maaID, PacketPtr pkt, Tick t
     if (my_outstanding_pkt_map.find(paddr) != my_outstanding_pkt_map.end()) {
         DPRINTF(MAAPort, "%s: found %s in outstanding packets\n", __func__, pkt->print());
         if ((my_outstanding_pkt_map[paddr].cmd == MemCmd::WritebackDirty || my_outstanding_pkt_map[paddr].cmd == MemCmd::WriteReq)
-                         && pkt->cmd == MemCmd::ReadExReq) {
+                         && (pkt->cmd == MemCmd::ReadExReq || pkt->cmd == MemCmd::ReadReq)) {
             DPRINTF(MAAPort, "%s: store to load forwarding for outstanding write packet %s and new read packet %s\n", __func__, my_outstanding_pkt_map[paddr].packet->print(), pkt->print());
             panic_if(my_outstanding_pkt_map[paddr].maaIDs.size() != 1, "%s: multiple units on outstanding write packet %s\n", __func__, my_outstanding_pkt_map[paddr].packet->print());
             // taking this panic cond  // my_outstanding_pkt_map[paddr].funcUnits[0] != funcUnit ||
