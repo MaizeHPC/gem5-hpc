@@ -154,10 +154,11 @@ void StreamAccessUnit::executeInstruction() {
         
 
         my_size = (my_max == my_min) ? 0 : std::min((int)(maa->num_tile_elements), ((int)((my_max - my_min - 1) / my_stride)) + 1);
+        my_current = my_min;
 
-        for(int i = 0; i < my_size; i++){
-            sentmyIQueue.push(i);
-        }
+        // for(int i = 0; i < my_size; i++){
+        //     sentmyIQueue.push(i);
+        // }
 
 
         DPRINTF(MAAStream, "S[%d] %s: min: %d, max: %d, stride: %d, size: %d!\n", my_stream_id, __func__, my_min, my_max, my_stride, my_size);
@@ -181,22 +182,23 @@ void StreamAccessUnit::executeInstruction() {
             assert(false);
         }
         maa->stats.numInst++;
-        std::vector<PageInfo> all_page_info;
-        for (int i = my_min; i < my_max; i += my_words_per_page) {
-            StreamAccessUnit::PageInfo page_info = getPageInfo(i, my_base_addr, my_word_size, my_min, my_stride);
-            if (page_info.curr_idx >= maa->num_tile_elements) {
-                DPRINTF(MAAStream, "S[%d] %s: page %s is out of bounds, breaking...!\n", my_stream_id, __func__, page_info.print());
-                break;
-            } else {
-                all_page_info.push_back(page_info);
-            }
-        }
-        for (int i = 0; i < all_page_info.size() - 1; i++) {
-            all_page_info[i].max_itr = all_page_info[i + 1].curr_itr;
-            my_all_page_info.insert(all_page_info[i]);
-        }
-        all_page_info[all_page_info.size() - 1].max_itr = my_max;
-        my_all_page_info.insert(all_page_info[all_page_info.size() - 1]);
+        // std::vector<PageInfo> all_page_info;
+        // for (int i = my_min; i < my_max; i += my_words_per_page) {
+        //     StreamAccessUnit::PageInfo page_info = getPageInfo(i, my_base_addr, my_word_size, my_min, my_stride);
+        //     if (page_info.curr_idx >= maa->num_tile_elements) {
+        //         DPRINTF(MAAStream, "S[%d] %s: page %s is out of bounds, breaking...!\n", my_stream_id, __func__, page_info.print());
+        //         break;
+        //     } else {
+        //         all_page_info.push_back(page_info);
+        //     }
+        // }
+        // for (int i = 0; i < all_page_info.size() - 1; i++) {
+        //     all_page_info[i].max_itr = all_page_info[i + 1].curr_itr;
+        //     my_all_page_info.insert(all_page_info[i]);
+        // }
+        // all_page_info[all_page_info.size() - 1].max_itr = my_max;
+        // my_all_page_info.insert(all_page_info[all_page_info.size() - 1]);
+        my_last_block_vaddr = -1;
         my_min_addr = my_instruction->minAddr;
         my_max_addr = my_instruction->maxAddr;
         my_addr_range_id = my_instruction->addrRangeID;
@@ -240,108 +242,84 @@ void StreamAccessUnit::executeInstruction() {
         if (my_request_start_tick == 0) {
             my_request_start_tick = curTick();
         }
-        fillCurrentPageInfos();
-        int num_spd_condread_accesses = 0;
+
         int num_request_table_cacheline_accesses = 0;
+        int num_spd_condread_accesses = 0;
         bool broken = false;
         bool any_broken = false;
         bool *channel_sent = new bool[maa->m_org[ADDR_CHANNEL_LEVEL]];
-        while (my_current_page_info.empty() == false && request_table->is_full() == false) {
-            for (auto page_it = my_current_page_info.begin(); page_it != my_current_page_info.end() && request_table->is_full() == false;) {
-                DPRINTF(MAAStream, "S[%d] %s: operating on page %s!\n", my_stream_id, __func__, page_it->print());
-                std::fill(channel_sent, channel_sent + maa->m_org[ADDR_CHANNEL_LEVEL], false);
-                broken = false;
-                for (; page_it->curr_itr < page_it->max_itr && page_it->curr_idx < maa->num_tile_elements; page_it->curr_itr += my_stride, page_it->curr_idx++) {
-                    if (my_cond_tile != -1) {
-                        if (maa->spd->getElementFinished(my_cond_tile, page_it->curr_idx, 4, (uint8_t)FuncUnitType::STREAM, my_stream_id) == false) {
-                            DPRINTF(MAAStream, "%s: cond tile[%d] element[%d] not ready, moving page %s to all!\n", __func__, my_cond_tile, page_it->curr_idx, page_it->print());
-                            my_all_page_info.insert(*page_it);
-                            page_it = my_current_page_info.erase(page_it);
-                            broken = true;
-                            any_broken = true;
-                            break;
-                        }
-                        num_spd_condread_accesses++;
-                    }
-                    if (my_src_tile != -1) {
-                        if (maa->spd->getElementFinished(my_src_tile, page_it->curr_idx, my_word_size, (uint8_t)FuncUnitType::STREAM, my_stream_id) == false) {
-                            DPRINTF(MAAStream, "%s: src tile[%d] element[%d] not ready, moving page %s to all!\n", __func__, my_src_tile, page_it->curr_idx, page_it->print());
-                            my_all_page_info.insert(*page_it);
-                            page_it = my_current_page_info.erase(page_it);
-                            broken = true;
-                            any_broken = true;
-                            break;
-                        }
-                    }
-                    if (my_cond_tile == -1 || maa->spd->getData<uint32_t>(my_cond_tile, page_it->curr_idx) != 0) {
-                        Addr vaddr = my_base_addr + my_word_size * page_it->curr_itr;
-                        panic_if(vaddr < my_min_addr || vaddr >= my_max_addr, "S[%d] %s: vaddr 0x%lx out of range [0x%lx, 0x%lx)!\n", my_stream_id, __func__, vaddr, my_min_addr, my_max_addr);
-                        Addr block_vaddr = addrBlockAligner(vaddr, block_size);
-                        if (block_vaddr != page_it->last_block_vaddr) {
-                            if (page_it->last_block_vaddr != 0) {
-                                Addr paddr = translatePacket(page_it->last_block_vaddr);
-                                std::vector<int> addr_vec = maa->map_addr(paddr);
-                                panic_if(channel_sent[addr_vec[ADDR_CHANNEL_LEVEL]], "S[%d] %s: channel %d already sent for page %s!\n", my_stream_id, __func__, addr_vec[ADDR_CHANNEL_LEVEL], page_it->print());
-                                my_sent_requests++;
-                                num_request_table_cacheline_accesses++;
-                                createReadPacket(paddr, num_request_table_cacheline_accesses);
-                                channel_sent[addr_vec[ADDR_CHANNEL_LEVEL]] = true;
-                            }
-                            page_it->last_block_vaddr = block_vaddr;
-                        }
-                        Addr paddr = translatePacket(block_vaddr);
-                        std::vector<int> addr_vec = maa->map_addr(paddr);
-                        if (channel_sent[addr_vec[ADDR_CHANNEL_LEVEL]]) {
-                            DPRINTF(MAAStream, "S[%d] RequestTable: entry %d not added because channel already pushed! paddr=0x%lx\n", my_stream_id, page_it->curr_idx, paddr);
-                            page_it++;
-                            broken = true;
-                            any_broken = true;
-                            break;
-                        }
-                        uint16_t word_id = (vaddr - block_vaddr) / my_word_size;
-                        if (request_table->add_entry(page_it->curr_idx, paddr, word_id) == false) {
-                            DPRINTF(MAAStream, "S[%d] RequestTable: entry %d not added because request table is full! vaddr=0x%lx, paddr=0x%lx wid = %d\n", my_stream_id, page_it->curr_idx, block_vaddr, paddr, word_id);
-                            (*maa->stats.STR_NumRTFull[my_stream_id])++;
-                            page_it++;
-                            broken = true;
-                            any_broken = true;
-                            break;
-                        } else {
-                            my_itr_max = std::max(my_itr_max, page_it->curr_idx);
-                            DPRINTF(MAAStream, "S[%d] RequestTable: entry %d added! vaddr=0x%lx, paddr=0x%lx wid = %d\n",
-                                    my_stream_id, page_it->curr_idx, block_vaddr, paddr, word_id);
+        for(; my_current < my_max; my_current += my_stride){
+            my_i = (my_current - my_min)/my_stride;
+            if(my_i >= maa->num_tile_elements){
+                break;
+            }
 
-                            // to keep the ids in order
-                            
-
-
-                        }
-                    } else if (my_instruction->opcode == Instruction::OpcodeType::STREAM_LD) {
-                        DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %u (cond not taken)\n", my_stream_id, __func__, my_dst_tile, page_it->curr_idx, 0);
-                        maa->spd->setFakeData(my_dst_tile, page_it->curr_idx, my_word_size);
-                        if(my_word_size == 4){
-                            tilewriteunit->setdata<uint32_t>(0, page_it->curr_idx);
-                        } else if(my_word_size == 8){
-                            tilewriteunit->setdata<uint64_t>(0, page_it->curr_idx);
-                        }
-                        my_set_fake_max = std::max(my_set_fake_max, page_it->curr_idx);
-                    }
+            if (my_cond_tile != -1) {
+                if (maa->spd->getElementFinished(my_cond_tile, my_i, 4, (uint8_t)FuncUnitType::STREAM, my_stream_id) == false) {
+                    DPRINTF(MAAStream, "%s: cond tile[%d] element[%d] not ready!\n", __func__, my_cond_tile, my_i);
+                    broken = true;
+                    any_broken = true;
+                    break;
                 }
-                if (broken == false) {
-                    if (page_it->last_block_vaddr != 0) {
-                        my_sent_requests++;
-                        Addr paddr = translatePacket(page_it->last_block_vaddr);
-                        createReadPacket(paddr, num_request_table_cacheline_accesses);
-                    }
-                    DPRINTF(MAAStream, "S[%d] %s: page %s done, removing!\n", my_stream_id, __func__, page_it->print());
-                    page_it = my_current_page_info.erase(page_it);
-                    bool was_last_page = page_it == my_current_page_info.end();
-                    // replacing with a new page and updating the iterator
-                    if (fillCurrentPageInfos() && was_last_page) {
-                        page_it = my_current_page_info.begin();
-                    }
+                num_spd_condread_accesses++;
+            }
+
+            if (my_src_tile != -1) {
+                if (maa->spd->getElementFinished(my_src_tile, my_i, my_word_size, (uint8_t)FuncUnitType::STREAM, my_stream_id) == false) {
+                    DPRINTF(MAAStream, "%s: src tile[%d] element[%d] not ready!\n", __func__, my_src_tile, my_i);
+                    broken = true;
+                    any_broken = true;
+                    break;
                 }
             }
+
+            if (my_cond_tile == -1 || maa->spd->getData<uint32_t>(my_cond_tile, my_i) != 0) {
+                Addr vaddr = my_base_addr + my_word_size * my_current;
+                panic_if(vaddr < my_min_addr || vaddr >= my_max_addr, "S[%d] %s: vaddr 0x%lx out of range [0x%lx, 0x%lx)!\n", my_stream_id, __func__, vaddr, my_min_addr, my_max_addr);
+                Addr block_vaddr = addrBlockAligner(vaddr, block_size);
+
+                Addr paddr = translatePacket(block_vaddr);
+                uint16_t word_id = (vaddr - block_vaddr) / my_word_size;
+                if (request_table->add_entry(my_i, paddr, word_id) == false) {
+                    DPRINTF(MAAStream, "S[%d] RequestTable: entry %d not added because request table is full! vaddr=0x%lx, paddr=0x%lx wid = %d\n", my_stream_id, my_i, block_vaddr, paddr, word_id);
+                    (*maa->stats.STR_NumRTFull[my_stream_id])++;
+                    broken = true;
+                    any_broken = true;
+                    break;
+                } else {
+                    my_itr_max = std::max(my_itr_max, my_i);
+                    DPRINTF(MAAStream, "S[%d] RequestTable: entry %d added! vaddr=0x%lx, paddr=0x%lx wid = %d\n",
+                            my_stream_id, my_i, block_vaddr, paddr, word_id);
+
+                }
+
+                if (block_vaddr != my_last_block_vaddr) {
+                    std::vector<int> addr_vec = maa->map_addr(paddr);
+                    my_sent_requests++;
+                    num_request_table_cacheline_accesses++;
+                    createReadPacket(paddr, num_request_table_cacheline_accesses);
+                    channel_sent[addr_vec[ADDR_CHANNEL_LEVEL]] = true;
+                    my_last_block_vaddr = block_vaddr;
+                }
+
+                // std::vector<int> addr_vec = maa->map_addr(paddr);
+                // if (channel_sent[addr_vec[ADDR_CHANNEL_LEVEL]]) {
+                //     DPRINTF(MAAStream, "S[%d] RequestTable: entry %d not added because channel already pushed! paddr=0x%lx\n", my_stream_id, my_i, paddr);
+                //     broken = true;
+                //     any_broken = true;
+                //     break;
+                // }
+            } else if (my_instruction->opcode == Instruction::OpcodeType::STREAM_LD) {
+                DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %u (cond not taken)\n", my_stream_id, __func__, my_dst_tile, my_i, 0);
+                maa->spd->setFakeData(my_dst_tile, my_i, my_word_size);
+                if(my_word_size == 4){
+                    tilewriteunit->setdata<uint32_t>(0, my_i);
+                } else if(my_word_size == 8){
+                    tilewriteunit->setdata<uint64_t>(0, my_i);
+                }
+                my_set_fake_max = std::max(my_set_fake_max, my_i);
+            }
+
         }
 
         if(!any_broken && !request_table->is_full()){
@@ -489,46 +467,6 @@ bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached) 
                 maa->spd->setData<uint64_t>(my_dst_tile, itr, dataptr_u64_typed[wid]);
                 tilewriteunit->setdata<uint64_t>(dataptr_u64_typed[wid], itr);
             }
-
-            // last element by receiving 
-            // if(dst_tile_id != -1){
-            // if(my_itr_max_final != -1 && (my_itr_max_final ==  my_received_itr_max || my_itr_max_final == my_set_fake_max) && !tilewriteunit->is_last_element_reached()){
-            //     tilewriteunit->mark_last_element_reached();
-            // }
-            // }
-
-            // if (my_word_size == 4) {
-            //     DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %u\n", my_stream_id, __func__, my_dst_tile, itr, dataptr_u32_typed[wid]);
-            //     writeBuffer[itr] = dataptr_u32_typed[wid];
-            //     tilewriteunit->setdata(dataptr_u32_typed[wid], itr);
-            // } else {
-            //     DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %lu\n", my_stream_id, __func__, my_dst_tile, itr, dataptr_u64_typed[wid]);
-            //     writeBuffer[itr] = dataptr_u64_typed[wid];
-            //     tilewriteunit->setdata(dataptr_u32_typed[wid], itr);
-            // }
-
-            // // rewriting the data in order
-            // while(sentmyIQueue.size() > 0 && writeBuffer.find(sentmyIQueue.front()) != writeBuffer.end()){
-            //     int my_i_queue = sentmyIQueue.front();
-            //     if (my_word_size == 4) {
-            //         uint32_t data_32 = writeBuffer[my_i_queue];
-            //         maa->spd->setData<uint32_t>(my_dst_tile, my_i_queue, writeBuffer[my_i_queue]);
-            //         maa->spd->SPDQueues[my_dst_tile].push(data_32);
-            //         DPRINTF(MAAStream, "I[%d] %s: SPD[%d][%d] = %u/%d/%f!\n", my_stream_id, __func__, my_dst_tile, my_i_queue, ((uint32_t *)&data_32)[0], ((int32_t *)&data_32)[0], ((float *)&data_32)[0]);
-
-            //     } else {
-            //         uint64_t data_64 = writeBuffer[my_i_queue];
-            //         maa->spd->setData<uint64_t>(my_dst_tile, my_i_queue, writeBuffer[my_i_queue]);
-            //         maa->spd->SPDQueues[my_dst_tile].push(data_64);
-            //         DPRINTF(MAAStream, "I[%d] %s: SPD[%d][%d] = %lu/%ld/%lf!\n", my_stream_id, __func__, my_dst_tile, my_i_queue, ((uint64_t *)&data_64)[0], ((int64_t *)&data_64)[0], ((double *)&data_64)[0]);
-
-            //     }
-            //     writeBuffer.erase(my_i_queue);
-            //     sentmyIQueue.pop();
-
-            // }
-
-
             /********************************/
             break;
         }
