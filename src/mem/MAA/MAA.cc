@@ -87,8 +87,11 @@ MAA::MAA(const MAAParams &p)
     ifile = new IF(num_instructions_per_maa, num_maas, this);
     streamAccessUnits = new StreamAccessUnit[num_maas];
     streamAccessIdle = new bool[num_maas];
+
+    fetch_tiles_from_cache = true;
+
     for (int i = 0; i < num_maas; i++) {
-        streamAccessUnits[i].allocate(i, num_request_table_addresses, num_request_table_entries_per_address, num_tile_elements, this);
+        streamAccessUnits[i].allocate(i, num_request_table_addresses, num_request_table_entries_per_address, num_tile_elements, this, fetch_tiles_from_cache);
         streamAccessIdle[i] = true;
     }
     indirectAccessUnits = new IndirectAccessUnit[num_maas];
@@ -101,13 +104,13 @@ MAA::MAA(const MAAParams &p)
     aluUnits = new ALUUnit[num_maas];
     aluUnitsIdle = new bool[num_maas];
     for (int i = 0; i < num_maas; i++) {
-        aluUnits[i].allocate(this, i, p.ALU_lane_latency, p.num_ALU_lanes, num_tile_elements);
+        aluUnits[i].allocate(this, i, p.ALU_lane_latency, p.num_ALU_lanes, num_tile_elements, fetch_tiles_from_cache);
         aluUnitsIdle[i] = true;
     }
     rangeUnits = new RangeFuserUnit[num_maas];
     rangeUnitsIdle = new bool[num_maas];
     for (int i = 0; i < num_maas; i++) {
-        rangeUnits[i].allocate(num_tile_elements, this, i);
+        rangeUnits[i].allocate(num_tile_elements, this, i, fetch_tiles_from_cache);
         rangeUnitsIdle[i] = true;
     }
     invalidatorIdle = true;
@@ -333,7 +336,8 @@ void MAA::addRamulator(memory::Ramulator2 *_ramulator2) {
                                         num_request_table_entries_per_address,
                                         num_channels,
                                         num_cores,
-                                        this);
+                                        this,
+                                        fetch_tiles_from_cache);
     }
     my_outstanding_indirect_cache_read_pkts = new std::multiset<OutstandingPacket, CompareByTick>[num_cores];
     my_outstanding_indirect_cache_write_pkts = new std::multiset<OutstandingPacket, CompareByTick>[num_cores];

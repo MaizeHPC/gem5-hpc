@@ -24,10 +24,10 @@ StreamAccessUnit::StreamAccessUnit()
     : executeInstructionEvent([this] { executeInstruction(); }, name()) {
     request_table = nullptr;
     my_instruction = nullptr;
-    fetch_tiles_from_cache = true;
 }
 
-void StreamAccessUnit::allocate(int _my_stream_id, unsigned int _num_request_table_addresses, unsigned int _num_request_table_entries_per_address, unsigned int _num_tile_elements, MAA *_maa) {
+void StreamAccessUnit::allocate(int _my_stream_id, unsigned int _num_request_table_addresses, unsigned int _num_request_table_entries_per_address, 
+        unsigned int _num_tile_elements, MAA *_maa, bool _fetch_tiles_from_cache) {
     my_stream_id = _my_stream_id;
     num_tile_elements = _num_tile_elements;
     num_request_table_addresses = _num_request_table_addresses;
@@ -38,6 +38,7 @@ void StreamAccessUnit::allocate(int _my_stream_id, unsigned int _num_request_tab
     request_table = new RequestTable(maa, num_request_table_addresses, num_request_table_entries_per_address, my_stream_id, true);
     my_translation_done = false;
     my_instruction = nullptr;
+    fetch_tiles_from_cache = _fetch_tiles_from_cache;
 
     tilewriteunit = new TileWrite(maa, TW_sent_requests, TW_received_responses, my_size, maa->spd->tile_write_counts, FuncUnitType::STREAM);
     tilereadunitSrc = new TileRead(maa, my_size, maa->spd->tile_write_counts, FuncUnitType::STREAM);
@@ -223,12 +224,12 @@ void StreamAccessUnit::executeInstruction() {
         scheduleExecuteInstructionEvent(Cycles(my_all_page_info.size() * 2));
 
         const int num_initial_reqs = 100;
-        if(my_dst_tile != -1){
-            tilewriteunit->set(my_dst_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size);
-            tilewriteunit->createAndSendTileExReads(num_initial_reqs);
-        }
-
         if(fetch_tiles_from_cache){
+            if(my_dst_tile != -1){
+                tilewriteunit->set(my_dst_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size);
+                tilewriteunit->createAndSendTileExReads(num_initial_reqs);
+            }
+
             if(my_src_tile != -1){
                 tilereadunitSrc->set(my_src_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size); // IDX tile is always 4 bytes
                 tilereadunitSrc->createAndSendTileExReads(num_initial_reqs);
@@ -376,14 +377,11 @@ void StreamAccessUnit::executeInstruction() {
 
         }
 
-        if(!any_broken && !request_table->is_full()){
+        if(!any_broken && !request_table->is_full() && fetch_tiles_from_cache){
             DPRINTF(MAAStream, "S[%d] %s: my_current_page_info is empty", my_stream_id, __func__);
             my_itr_max_final = std::max(my_set_fake_max, my_itr_max);
             tilewriteunit->set_max_element(my_itr_max_final+1); // adding one to get max count
             tilereadunitSrc->mark_last_element_reached();
-            // if(((my_itr_max_final ==  my_received_itr_max) || (my_itr_max_final == my_set_fake_max)) && !tilewriteunit->is_last_element_reached()){
-            //     tilewriteunit->mark_last_element_reached();
-            // }
         }
 
         delete[] channel_sent;
@@ -394,7 +392,7 @@ void StreamAccessUnit::executeInstruction() {
         }
 
         bool tileWriteUnitCheck, tileReadUnitCheck;
-        tileWriteUnitCheck = (dst_tile_id == -1) ? true : tilewriteunit->check_all_responses_received();
+        tileWriteUnitCheck = (dst_tile_id == -1 || fetch_tiles_from_cache) ? true : tilewriteunit->check_all_responses_received();
         tileReadUnitCheck = (my_instruction->opcode != Instruction::OpcodeType::STREAM_ST || !fetch_tiles_from_cache) ? true : tilereadunitSrc->check_all_responses_received();
 
         if ((my_received_responses != my_sent_requests) || !tileWriteUnitCheck || !tileReadUnitCheck || !maa->allStreamPacketsSent(my_stream_id)) {
@@ -476,18 +474,18 @@ void StreamAccessUnit::writePacketSent(Addr addr) {
 }
 bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached) {
 
-    if(tilewriteunit->recv_data(addr, dataptr, cached)){
-        DPRINTF(MAAStream, "S[%d] %s: expected: %d, received: %d!\n", my_stream_id, __func__, get_all_sent() , get_all_received());
-        DPRINTF(MAAStream, "S[%d] %s: my_received_responses: %d, TW_received_responses: %d!\n", my_stream_id, __func__, my_received_responses , TW_received_responses);
-        DPRINTF(MAAStream, "S[%d] %s: my_sent_requests: %d, TW_sent_requests: %d!\n", my_stream_id, __func__, my_sent_requests, TW_sent_requests);
-        if (maa->allStreamPacketsSent(my_stream_id) && get_all_received() == get_all_sent()) {
-            DPRINTF(MAAStream, "S[%d] %s: all responses received, calling execution again in state %s!\n", my_stream_id, __func__, status_names[(int)state]);
-            scheduleNextExecution(true);
-        }
-        return true;
-    }
-
     if(fetch_tiles_from_cache){
+        if(tilewriteunit->recv_data(addr, dataptr, cached)){
+            DPRINTF(MAAStream, "S[%d] %s: expected: %d, received: %d!\n", my_stream_id, __func__, get_all_sent() , get_all_received());
+            DPRINTF(MAAStream, "S[%d] %s: my_received_responses: %d, TW_received_responses: %d!\n", my_stream_id, __func__, my_received_responses , TW_received_responses);
+            DPRINTF(MAAStream, "S[%d] %s: my_sent_requests: %d, TW_sent_requests: %d!\n", my_stream_id, __func__, my_sent_requests, TW_sent_requests);
+            if (maa->allStreamPacketsSent(my_stream_id) && get_all_received() == get_all_sent()) {
+                DPRINTF(MAAStream, "S[%d] %s: all responses received, calling execution again in state %s!\n", my_stream_id, __func__, status_names[(int)state]);
+                scheduleNextExecution(true);
+            }
+            return true;
+        }
+
         if(my_instruction->opcode == Instruction::OpcodeType::STREAM_ST) {
             if(tilereadunitSrc->recv_data(addr, dataptr, cached)){
                 scheduleNextExecution(true);

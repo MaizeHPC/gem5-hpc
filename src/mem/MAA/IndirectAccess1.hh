@@ -121,7 +121,8 @@ public:
                 //   Cycles _rowtable_latency,
                   int _num_channels,
                   int _num_cores,
-                  MAA *_maa);
+                  MAA *_maa,
+                  bool fetch_tiles_from_cache);
     Status getState() const { return state; }
     bool scheduleNextExecution(bool force = false);
     void scheduleExecuteInstructionEvent(int latency = 0);

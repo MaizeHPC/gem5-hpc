@@ -22,9 +22,9 @@ ALUUnit::ALUUnit()
     : executeInstructionEvent([this] { executeInstruction(); }, name()) {
     my_dst_tile = -1;
     my_instruction = nullptr;
-    fetch_tiles_from_cache = true;
+    // fetch_tiles_from_cache = true;
 }
-void ALUUnit::allocate(MAA *_maa, int _my_alu_id, Cycles _ALU_lane_latency, int _num_ALU_lanes, int _num_tile_elements) {
+void ALUUnit::allocate(MAA *_maa, int _my_alu_id, Cycles _ALU_lane_latency, int _num_ALU_lanes, int _num_tile_elements, bool _fetch_tiles_from_cache) {
     state = Status::Idle;
     maa = _maa;
     my_alu_id = _my_alu_id;
@@ -32,6 +32,7 @@ void ALUUnit::allocate(MAA *_maa, int _my_alu_id, Cycles _ALU_lane_latency, int 
     num_ALU_lanes = _num_ALU_lanes;
     num_tile_elements = _num_tile_elements;
     my_instruction = nullptr;
+    fetch_tiles_from_cache = _fetch_tiles_from_cache;
 
     tilewriteunit = new TileWrite(maa, TW_sent_requests, TW_received_responses, my_max, maa->spd->tile_write_counts, FuncUnitType::ALU);
 

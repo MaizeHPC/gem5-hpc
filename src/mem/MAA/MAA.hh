@@ -470,6 +470,7 @@ protected:
     bool *rangeUnitsIdle;
     bool invalidatorIdle;
     std::unique_ptr<Packet> pendingDelete;
+    bool fetch_tiles_from_cache;
 
 public:
     Tick my_last_idle_tick;

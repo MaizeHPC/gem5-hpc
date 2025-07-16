@@ -95,7 +95,7 @@ public:
         assert(tilewriteunit != nullptr);
         delete [] tilewriteunit;
     }
-    void allocate(int _my_stream_id, unsigned int _num_request_table_addresses, unsigned int _num_request_table_entries_per_address, unsigned int _num_tile_elements, MAA *_maa);
+    void allocate(int _my_stream_id, unsigned int _num_request_table_addresses, unsigned int _num_request_table_entries_per_address, unsigned int _num_tile_elements, MAA *_maa, bool _fetch_tiles_from_cache);
 
     Status getState() const { return state; }
 

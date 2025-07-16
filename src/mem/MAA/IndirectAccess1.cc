@@ -44,7 +44,7 @@ IndirectAccessUnit::IndirectAccessUnit()
     my_RT_req_sent = nullptr;
     my_RT_slice_order = nullptr;
     my_instruction = nullptr;
-    fetch_tiles_from_cache = true;
+    // fetch_tiles_from_cache = true;
 }
 IndirectAccessUnit::~IndirectAccessUnit() {
 
@@ -103,7 +103,8 @@ void IndirectAccessUnit::allocate(int _my_indirect_id,
 
                                   int _num_channels,
                                   int _num_cores,
-                                  MAA *_maa) {
+                                  MAA *_maa,
+                                  bool _fetch_tiles_from_cache) {
     my_indirect_id = _my_indirect_id;
     maa = _maa;
     num_tile_elements = _num_tile_elements;
@@ -128,6 +129,7 @@ void IndirectAccessUnit::allocate(int _my_indirect_id,
     tilewriteunit = new TileWrite(maa, TW_expected_responses, TW_received_responses, my_max, maa->spd->tile_write_counts, FuncUnitType::INDIRECT);
     tilereadunitIdx = new TileRead(maa, my_max, maa->spd->tile_write_counts, FuncUnitType::INDIRECT);
     tilereadunitSrc = new TileRead(maa, my_max, maa->spd->tile_write_counts, FuncUnitType::INDIRECT);
+    fetch_tiles_from_cache = _fetch_tiles_from_cache;
     // offset_table = new OffsetTable();
     // offset_table->allocate(my_indirect_id, num_tile_elements, maa, false);
 

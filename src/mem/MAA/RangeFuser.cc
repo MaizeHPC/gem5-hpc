@@ -21,14 +21,15 @@ namespace gem5 {
 RangeFuserUnit::RangeFuserUnit()
     : executeInstructionEvent([this] { executeInstruction(); }, name()) {
     my_instruction = nullptr;
-    fetch_tiles_from_cache = true;
+    // fetch_tiles_from_cache = true;
 }
-void RangeFuserUnit::allocate(unsigned int _num_tile_elements, MAA *_maa, int _my_range_id) {
+void RangeFuserUnit::allocate(unsigned int _num_tile_elements, MAA *_maa, int _my_range_id, bool _fetch_tiles_from_cache) {
     state = Status::Idle;
     num_tile_elements = _num_tile_elements;
     maa = _maa;
     my_range_id = _my_range_id;
     my_instruction = nullptr;
+    fetch_tiles_from_cache = _fetch_tiles_from_cache;
 
     tilewriteunit_0 = new TileWrite(maa, TW_sent_requests_0, TW_received_responses_0, my_size_0, maa->spd->tile_write_counts, FuncUnitType::RANGE);
     tilewriteunit_1 = new TileWrite(maa, TW_sent_requests_1, TW_received_responses_1, my_size_1, maa->spd->tile_write_counts, FuncUnitType::RANGE);

@@ -44,7 +44,7 @@ protected:
 public:
     RangeFuserUnit();
 
-    void allocate(unsigned int _num_tile_elements, MAA *_maa, int _my_range_id);
+    void allocate(unsigned int _num_tile_elements, MAA *_maa, int _my_range_id, bool fetch_tiles_from_cache);
 
     Status getState() const { return state; }
 

@@ -43,7 +43,7 @@ protected:
 public:
     ALUUnit();
 
-    void allocate(MAA *_maa, int _my_alu_id, Cycles _ALU_lane_latency, int _num_ALU_lanes, int _num_tile_elements);
+    void allocate(MAA *_maa, int _my_alu_id, Cycles _ALU_lane_latency, int _num_ALU_lanes, int _num_tile_elements, bool fetch_tiles_from_cache);
 
     Status getState() const { return state; }
 
