@@ -24,7 +24,7 @@ StreamAccessUnit::StreamAccessUnit()
     : executeInstructionEvent([this] { executeInstruction(); }, name()) {
     request_table = nullptr;
     my_instruction = nullptr;
-    fetch_tiles_from_cache = false;
+    fetch_tiles_from_cache = true;
 }
 
 void StreamAccessUnit::allocate(int _my_stream_id, unsigned int _num_request_table_addresses, unsigned int _num_request_table_entries_per_address, unsigned int _num_tile_elements, MAA *_maa) {
@@ -283,17 +283,19 @@ void StreamAccessUnit::executeInstruction() {
             }
 
             bool src_avail = false;
-            uint32_t src_32;
-            uint64_t src_64;
+            uint32_t src_32 = 0;
+            uint64_t src_64 = 0;
             if(fetch_tiles_from_cache){
                 if(my_instruction->opcode == Instruction::OpcodeType::STREAM_ST){
                     if(my_word_size ==4){
                         src_avail = tilereadunitSrc->getData<uint32_t>(src_32, my_i, false);
-                    } else {
+                    } else if(my_word_size ==4){
                         src_avail = tilereadunitSrc->getData<uint64_t>(src_64, my_i, false);
                     }
 
                     if(!src_avail){
+                        broken = true;
+                        any_broken = true;
                         break;
                     }
                 }
@@ -378,6 +380,7 @@ void StreamAccessUnit::executeInstruction() {
             DPRINTF(MAAStream, "S[%d] %s: my_current_page_info is empty", my_stream_id, __func__);
             my_itr_max_final = std::max(my_set_fake_max, my_itr_max);
             tilewriteunit->set_max_element(my_itr_max_final+1); // adding one to get max count
+            tilereadunitSrc->mark_last_element_reached();
             // if(((my_itr_max_final ==  my_received_itr_max) || (my_itr_max_final == my_set_fake_max)) && !tilewriteunit->is_last_element_reached()){
             //     tilewriteunit->mark_last_element_reached();
             // }
