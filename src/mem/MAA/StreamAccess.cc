@@ -24,6 +24,7 @@ StreamAccessUnit::StreamAccessUnit()
     : executeInstructionEvent([this] { executeInstruction(); }, name()) {
     request_table = nullptr;
     my_instruction = nullptr;
+    fetch_tiles_from_cache = true;
 }
 
 void StreamAccessUnit::allocate(int _my_stream_id, unsigned int _num_request_table_addresses, unsigned int _num_request_table_entries_per_address, unsigned int _num_tile_elements, MAA *_maa) {
@@ -39,6 +40,7 @@ void StreamAccessUnit::allocate(int _my_stream_id, unsigned int _num_request_tab
     my_instruction = nullptr;
 
     tilewriteunit = new TileWrite(maa, TW_sent_requests, TW_received_responses, my_size, maa->spd->tile_write_counts, FuncUnitType::STREAM);
+    tilereadunitSrc = new TileRead(maa, my_size, maa->spd->tile_write_counts, FuncUnitType::STREAM);
 }
 Cycles StreamAccessUnit::updateLatency(int num_spd_condread_accesses, int num_spd_srcread_accesses, int num_spd_write_accesses, int num_requesttable_accesses) {
     if (num_spd_condread_accesses != 0) {
@@ -220,10 +222,17 @@ void StreamAccessUnit::executeInstruction() {
         state = Status::Request;
         scheduleExecuteInstructionEvent(Cycles(my_all_page_info.size() * 2));
 
+        const int num_initial_reqs = 100;
         if(my_dst_tile != -1){
             tilewriteunit->set(my_dst_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size);
-            int num_initial_reqs = 100;
             tilewriteunit->createAndSendTileExReads(num_initial_reqs);
+        }
+
+        if(fetch_tiles_from_cache){
+            if(my_src_tile != -1){
+                tilereadunitSrc->set(my_src_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size); // IDX tile is always 4 bytes
+                tilereadunitSrc->createAndSendTileExReads(num_initial_reqs);
+            }
         }
 
         my_received_itr_max = -1;
@@ -273,6 +282,23 @@ void StreamAccessUnit::executeInstruction() {
                 }
             }
 
+            bool src_avail = false;
+            uint32_t src_32;
+            uint64_t src_64;
+            if(fetch_tiles_from_cache){
+                if(my_instruction->opcode == Instruction::OpcodeType::STREAM_ST){
+                    if(my_word_size ==4){
+                        src_avail = tilereadunitSrc->getData<uint32_t>(src_32, my_i, false);
+                    } else {
+                        src_avail = tilereadunitSrc->getData<uint64_t>(src_64, my_i, false);
+                    }
+
+                    if(!src_avail){
+                        break;
+                    }
+                }
+            }
+
             if (my_cond_tile == -1 || maa->spd->getData<uint32_t>(my_cond_tile, my_i) != 0) {
                 Addr vaddr = my_base_addr + my_word_size * my_current;
                 panic_if(vaddr < my_min_addr || vaddr >= my_max_addr, "S[%d] %s: vaddr 0x%lx out of range [0x%lx, 0x%lx)!\n", my_stream_id, __func__, vaddr, my_min_addr, my_max_addr);
@@ -280,7 +306,30 @@ void StreamAccessUnit::executeInstruction() {
 
                 Addr paddr = translatePacket(block_vaddr);
                 uint16_t word_id = (vaddr - block_vaddr) / my_word_size;
-                if (request_table->add_entry(my_i, paddr, word_id) == false) {
+                bool inserted; 
+                if (my_instruction->opcode == Instruction::OpcodeType::STREAM_ST){
+                    if(fetch_tiles_from_cache){
+                        if(my_word_size == 4){
+                            inserted = request_table->add_entry(my_i, paddr, word_id, src_32);
+                            assert(src_32 == maa->spd->getData<uint32_t>(my_src_tile, my_i));
+                        } else {
+                            inserted = request_table->add_entry(my_i, paddr, word_id, src_64);
+                            assert(src_64 == maa->spd->getData<uint64_t>(my_src_tile, my_i));
+                        }
+                    } else {
+                        if(my_word_size == 4){
+                            src_32 = maa->spd->getData<uint32_t>(my_src_tile, my_i);
+                            inserted = request_table->add_entry(my_i, paddr, word_id, src_32);
+                        } else {
+                            src_64 = maa->spd->getData<uint64_t>(my_src_tile, my_i);
+                            inserted = request_table->add_entry(my_i, paddr, word_id, src_64);
+                        }
+                    }
+                } else {
+                    inserted = request_table->add_entry(my_i, paddr, word_id);
+                }
+
+                if (!inserted) {
                     DPRINTF(MAAStream, "S[%d] RequestTable: entry %d not added because request table is full! vaddr=0x%lx, paddr=0x%lx wid = %d\n", my_stream_id, my_i, block_vaddr, paddr, word_id);
                     (*maa->stats.STR_NumRTFull[my_stream_id])++;
                     broken = true;
@@ -302,13 +351,6 @@ void StreamAccessUnit::executeInstruction() {
                     my_last_block_vaddr = block_vaddr;
                 }
 
-                // std::vector<int> addr_vec = maa->map_addr(paddr);
-                // if (channel_sent[addr_vec[ADDR_CHANNEL_LEVEL]]) {
-                //     DPRINTF(MAAStream, "S[%d] RequestTable: entry %d not added because channel already pushed! paddr=0x%lx\n", my_stream_id, my_i, paddr);
-                //     broken = true;
-                //     any_broken = true;
-                //     break;
-                // }
             } else if (my_instruction->opcode == Instruction::OpcodeType::STREAM_LD) {
                 DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %u (cond not taken)\n", my_stream_id, __func__, my_dst_tile, my_i, 0);
                 maa->spd->setFakeData(my_dst_tile, my_i, my_word_size);
@@ -318,6 +360,16 @@ void StreamAccessUnit::executeInstruction() {
                     tilewriteunit->setdata<uint64_t>(0, my_i);
                 }
                 my_set_fake_max = std::max(my_set_fake_max, my_i);
+            }
+
+            if(fetch_tiles_from_cache){
+                if(my_instruction->opcode == Instruction::OpcodeType::STREAM_ST){
+                    if(my_word_size ==4){
+                        src_avail = tilereadunitSrc->getData<uint32_t>(src_32, my_i, true);
+                    } else {
+                        src_avail = tilereadunitSrc->getData<uint64_t>(src_64, my_i, true);
+                    }
+                }
             }
 
         }
@@ -338,14 +390,11 @@ void StreamAccessUnit::executeInstruction() {
             scheduleNextExecution();
         }
 
-        bool tileWriteUnitCheck;
-        if(dst_tile_id == -1){
-            tileWriteUnitCheck = true;
-        } else {
-            tileWriteUnitCheck = tilewriteunit->check_all_responses_received();
-        }
+        bool tileWriteUnitCheck, tileReadUnitCheck;
+        tileWriteUnitCheck = (dst_tile_id == -1) ? true : tilewriteunit->check_all_responses_received();
+        tileReadUnitCheck = (my_instruction->opcode != Instruction::OpcodeType::STREAM_ST || !fetch_tiles_from_cache) ? true : tilereadunitSrc->check_all_responses_received();
 
-        if ((my_received_responses != my_sent_requests) || !tileWriteUnitCheck || !maa->allStreamPacketsSent(my_stream_id)) {
+        if ((my_received_responses != my_sent_requests) || !tileWriteUnitCheck || !tileReadUnitCheck || !maa->allStreamPacketsSent(my_stream_id)) {
             DPRINTF(MAAStream, "S[%d] %s: Waiting for responses, received (%d) != send (%d)...\n", my_stream_id, __func__, get_all_received(), get_all_sent());
         } else {
             if (my_cond_tile != -1 && maa->spd->getTileStatus(my_cond_tile,  (uint8_t)FuncUnitType::STREAM, my_stream_id) != SPD::TileStatus::Finished) {
@@ -435,6 +484,15 @@ bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached) 
         return true;
     }
 
+    if(fetch_tiles_from_cache){
+        if(my_instruction->opcode == Instruction::OpcodeType::STREAM_ST) {
+            if(tilereadunitSrc->recv_data(addr, dataptr, cached)){
+                scheduleNextExecution(true);
+                return true;
+            }
+        }
+    }
+
     bool was_request_table_full = request_table->is_full();
     std::vector<RequestTableEntry> entries = request_table->get_entries(addr);
     if (entries.empty()) {
@@ -449,6 +507,7 @@ bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached) 
     for (auto entry : entries) {
         int itr = entry.itr;
         int wid = entry.wid;
+        uint64_t srcData = entry.data;
 
         my_received_itr_max = std::max(my_received_itr_max,itr);
 
@@ -472,10 +531,10 @@ bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached) 
         }
         case Instruction::OpcodeType::STREAM_ST: {
             if (my_word_size == 4) {
-                ((uint32_t *)new_data)[wid] = maa->spd->getData<uint32_t>(my_src_tile, itr);
+                ((uint32_t *)new_data)[wid] = castuint64_t<uint32_t> (srcData);
                 DPRINTF(MAAStream, "S[%d] %s: new_data[%d] = SPD[%d][%d] = %f!\n", my_stream_id, __func__, wid, my_src_tile, itr, ((float *)new_data)[wid]);
             } else {
-                ((uint64_t *)new_data)[wid] = maa->spd->getData<uint64_t>(my_src_tile, itr);
+                ((uint64_t *)new_data)[wid] = srcData;
                 DPRINTF(MAAStream, "S[%d] %s: new_data[%d] = SPD[%d][%d] = %f!\n", my_stream_id, __func__, wid, my_src_tile, itr, ((double *)new_data)[wid]);
             }
             break;

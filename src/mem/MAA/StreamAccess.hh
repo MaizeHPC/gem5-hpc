@@ -17,6 +17,7 @@
 #include "mem/MAA/IF.hh"
 #include "mem/MAA/Tables.hh"
 #include "mem/MAA/TileWrite.hh"
+#include "mem/MAA/TileRead.hh"
 
 namespace gem5 {
 
@@ -83,6 +84,7 @@ protected:
 
     // modified Vasan
     TileWrite* tilewriteunit;
+    TileRead* tilereadunitSrc;
 
 public:
     StreamAccessUnit();
@@ -144,6 +146,7 @@ protected:
     Tick my_decode_start_tick;
     Tick my_request_start_tick;
     int my_size;
+    bool fetch_tiles_from_cache;
 
     Addr my_translated_addr;
     bool my_translation_done;
@@ -155,6 +158,14 @@ protected:
     int getGBGAddr(int channel, int rank, int bankgroup);
     PageInfo getPageInfo(int i, Addr base_addr, int word_size, int min, int stride);
     bool fillCurrentPageInfos();
+    template<class T> T castuint64_t(uint64_t data){
+        if(sizeof(T) == 4){
+            uint32_t data_new = data;
+            return *((T*) (&data_new)); 
+        } else {
+            return *((T*) (&data)); 
+        }
+    }
 };
 } // namespace gem5
 
