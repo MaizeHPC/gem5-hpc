@@ -21,7 +21,7 @@ namespace gem5 {
 RangeFuserUnit::RangeFuserUnit()
     : executeInstructionEvent([this] { executeInstruction(); }, name()) {
     my_instruction = nullptr;
-    fetch_tiles_from_cache = false;
+    fetch_tiles_from_cache = true;
 }
 void RangeFuserUnit::allocate(unsigned int _num_tile_elements, MAA *_maa, int _my_range_id) {
     state = Status::Idle;
@@ -253,9 +253,9 @@ void RangeFuserUnit::executeInstruction() {
                 return;
             }
 
-            if(fetch_tiles_from_cache){
-                assert(my_min_j == maa->spd->getData<uint32_t>(my_min_tile, my_last_i));
-                assert(my_max_j == maa->spd->getData<uint32_t>(my_max_tile, my_last_i));
+            if(fetch_tiles_from_cache && (my_cond_tile == -1 || maa->spd->getData<uint32_t>(my_cond_tile, my_last_i) != 0)){
+                panic_if(my_min_j != maa->spd->getData<uint32_t>(my_min_tile, my_last_i), "my_last_i:%d, my_min_tile:%d, my_min_j:%d, read_from_scratchpad:%d\n", my_last_i, my_min_tile, my_min_j, maa->spd->getData<uint32_t>(my_min_tile, my_last_i));
+                panic_if(my_max_j != maa->spd->getData<uint32_t>(my_max_tile, my_last_i), "my_last_j:%d, my_max_tile:%d, my_max_j:%d, read_from_scratchpad:%d\n", my_last_j, my_max_tile, my_max_j, maa->spd->getData<uint32_t>(my_max_tile, my_last_i));
             } else {
                 my_min_j = maa->spd->getData<uint32_t>(my_min_tile, my_last_i);
                 my_max_j = maa->spd->getData<uint32_t>(my_max_tile, my_last_i);

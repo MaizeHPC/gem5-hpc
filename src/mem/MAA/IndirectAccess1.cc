@@ -671,9 +671,9 @@ void IndirectAccessUnit::fillRequestTable(bool &finished, bool &waitForFinish, b
             set_fake_max = std::max(set_fake_max, my_i);
             maa->spd->setFakeData(my_dst_tile, my_i, my_word_size);
             if(my_word_size == 4){
-                tilewriteunit->setdata<uint32_t>(5, my_i);
+                tilewriteunit->setdata<uint32_t>(0, my_i);
             } else if(my_word_size == 8){
-                tilewriteunit->setdata<uint64_t>(5, my_i);
+                tilewriteunit->setdata<uint64_t>(0, my_i);
             }
         }
 

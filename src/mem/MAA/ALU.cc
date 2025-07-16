@@ -22,7 +22,7 @@ ALUUnit::ALUUnit()
     : executeInstructionEvent([this] { executeInstruction(); }, name()) {
     my_dst_tile = -1;
     my_instruction = nullptr;
-    fetch_tiles_from_cache = false;
+    fetch_tiles_from_cache = true;
 }
 void ALUUnit::allocate(MAA *_maa, int _my_alu_id, Cycles _ALU_lane_latency, int _num_ALU_lanes, int _num_tile_elements) {
     state = Status::Idle;
