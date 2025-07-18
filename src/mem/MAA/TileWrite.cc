@@ -109,7 +109,7 @@ namespace gem5 {
     }
 
     bool TileWrite::check_all_responses_received(){
-        DPRINTF(MAATileWrite, "TW[%d] %s %s: expected_response:%d received_response:%d all_eleements_written:%d last_elemet_set:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], expected_response, received_response, all_eleements_written, last_elemet_set);
+        DPRINTF(MAATileWrite, "TW[%d] TileID:%d %s %s: expected_response:%d received_response:%d all_eleements_written:%d last_elemet_set:%d\n", my_indirect_id, TileID, __func__, func_unit_names[static_cast<int>(funcUnit)], expected_response, received_response, all_eleements_written, last_elemet_set);
         assert(unitInitialized);
         return (expected_response == received_response) && all_eleements_written && last_elemet_set;
     }

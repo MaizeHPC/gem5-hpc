@@ -89,45 +89,45 @@ bool StreamAccessUnit::scheduleNextExecution(bool force) {
     }
     return false;
 }
-int StreamAccessUnit::getGBGAddr(int channel, int rank, int bankgroup) {
-    return (channel * maa->m_org[ADDR_RANK_LEVEL] + rank) * maa->m_org[ADDR_BANKGROUP_LEVEL] + bankgroup;
-}
-StreamAccessUnit::PageInfo StreamAccessUnit::getPageInfo(int i, Addr base_addr, int word_size, int min, int stride) {
-    Addr word_vaddr = base_addr + word_size * i;
-    Addr block_vaddr = addrBlockAligner(word_vaddr, block_size);
-    Addr block_paddr = translatePacket(block_vaddr);
-    Addr word_paddr = block_paddr + (word_vaddr - block_vaddr);
-    Addr page_paddr = addrBlockAligner(block_paddr, page_size);
-    assert(word_paddr >= page_paddr);
-    Addr diff_word_page_paddr = word_paddr - page_paddr;
-    assert(diff_word_page_paddr % word_size == 0);
-    int diff_word_page_words = diff_word_page_paddr / word_size;
-    int min_itr = std::max(min, i - diff_word_page_words);
-    // we use ceiling here to find the minimum idx in the page
-    int min_idx = min_itr == min ? 0 : ((int)((min_itr - min - 1) / stride)) + 1;
-    // We find the minimum itr based on the minimum idx which is stride aligned
-    min_itr = min_idx * stride + min;
-    std::vector<int> addr_vec = maa->map_addr(page_paddr);
-    Addr gbg_addr = getGBGAddr(addr_vec[ADDR_CHANNEL_LEVEL], addr_vec[ADDR_RANK_LEVEL], addr_vec[ADDR_BANKGROUP_LEVEL]);
-    DPRINTF(MAAStream, "S[%d] %s: word[%d] wordPaddr[0x%lx] blockPaddr[0x%lx] pagePaddr[0x%lx] minItr[%d] minIdx[%d] GBG[%d]\n", my_stream_id, __func__, i, word_paddr, block_paddr, page_paddr, min_itr, min_idx, gbg_addr);
-    return StreamAccessUnit::PageInfo(min_itr, min_idx, gbg_addr);
-}
-bool StreamAccessUnit::fillCurrentPageInfos() {
-    bool inserted = false;
-    for (auto it = my_all_page_info.begin(); it != my_all_page_info.end();) {
-        if (std::find_if(my_current_page_info.begin(), my_current_page_info.end(), [it](const PageInfo &page) {
-                return page.bg_addr == it->bg_addr;
-            }) == my_current_page_info.end()) {
-            my_current_page_info.push_back(*it);
-            DPRINTF(MAAStream, "S[%d] %s: %s added to current page info!\n", my_stream_id, __func__, it->print());
-            it = my_all_page_info.erase(it);
-            inserted = true;
-        } else {
-            ++it;
-        }
-    }
-    return inserted;
-}
+// int StreamAccessUnit::getGBGAddr(int channel, int rank, int bankgroup) {
+//     return (channel * maa->m_org[ADDR_RANK_LEVEL] + rank) * maa->m_org[ADDR_BANKGROUP_LEVEL] + bankgroup;
+// }
+// StreamAccessUnit::PageInfo StreamAccessUnit::getPageInfo(int i, Addr base_addr, int word_size, int min, int stride) {
+//     Addr word_vaddr = base_addr + word_size * i;
+//     Addr block_vaddr = addrBlockAligner(word_vaddr, block_size);
+//     Addr block_paddr = translatePacket(block_vaddr);
+//     Addr word_paddr = block_paddr + (word_vaddr - block_vaddr);
+//     Addr page_paddr = addrBlockAligner(block_paddr, page_size);
+//     assert(word_paddr >= page_paddr);
+//     Addr diff_word_page_paddr = word_paddr - page_paddr;
+//     assert(diff_word_page_paddr % word_size == 0);
+//     int diff_word_page_words = diff_word_page_paddr / word_size;
+//     int min_itr = std::max(min, i - diff_word_page_words);
+//     // we use ceiling here to find the minimum idx in the page
+//     int min_idx = min_itr == min ? 0 : ((int)((min_itr - min - 1) / stride)) + 1;
+//     // We find the minimum itr based on the minimum idx which is stride aligned
+//     min_itr = min_idx * stride + min;
+//     std::vector<int> addr_vec = maa->map_addr(page_paddr);
+//     Addr gbg_addr = getGBGAddr(addr_vec[ADDR_CHANNEL_LEVEL], addr_vec[ADDR_RANK_LEVEL], addr_vec[ADDR_BANKGROUP_LEVEL]);
+//     DPRINTF(MAAStream, "S[%d] %s: word[%d] wordPaddr[0x%lx] blockPaddr[0x%lx] pagePaddr[0x%lx] minItr[%d] minIdx[%d] GBG[%d]\n", my_stream_id, __func__, i, word_paddr, block_paddr, page_paddr, min_itr, min_idx, gbg_addr);
+//     return StreamAccessUnit::PageInfo(min_itr, min_idx, gbg_addr);
+// }
+// bool StreamAccessUnit::fillCurrentPageInfos() {
+//     bool inserted = false;
+//     for (auto it = my_all_page_info.begin(); it != my_all_page_info.end();) {
+//         if (std::find_if(my_current_page_info.begin(), my_current_page_info.end(), [it](const PageInfo &page) {
+//                 return page.bg_addr == it->bg_addr;
+//             }) == my_current_page_info.end()) {
+//             my_current_page_info.push_back(*it);
+//             DPRINTF(MAAStream, "S[%d] %s: %s added to current page info!\n", my_stream_id, __func__, it->print());
+//             it = my_all_page_info.erase(it);
+//             inserted = true;
+//         } else {
+//             ++it;
+//         }
+//     }
+//     return inserted;
+// }
 void StreamAccessUnit::executeInstruction() {
     switch (state) {
     case Status::Idle: {
@@ -185,22 +185,7 @@ void StreamAccessUnit::executeInstruction() {
             assert(false);
         }
         maa->stats.numInst++;
-        // std::vector<PageInfo> all_page_info;
-        // for (int i = my_min; i < my_max; i += my_words_per_page) {
-        //     StreamAccessUnit::PageInfo page_info = getPageInfo(i, my_base_addr, my_word_size, my_min, my_stride);
-        //     if (page_info.curr_idx >= maa->num_tile_elements) {
-        //         DPRINTF(MAAStream, "S[%d] %s: page %s is out of bounds, breaking...!\n", my_stream_id, __func__, page_info.print());
-        //         break;
-        //     } else {
-        //         all_page_info.push_back(page_info);
-        //     }
-        // }
-        // for (int i = 0; i < all_page_info.size() - 1; i++) {
-        //     all_page_info[i].max_itr = all_page_info[i + 1].curr_itr;
-        //     my_all_page_info.insert(all_page_info[i]);
-        // }
-        // all_page_info[all_page_info.size() - 1].max_itr = my_max;
-        // my_all_page_info.insert(all_page_info[all_page_info.size() - 1]);
+
         my_last_block_vaddr = -1;
         my_min_addr = my_instruction->minAddr;
         my_max_addr = my_instruction->maxAddr;
@@ -258,9 +243,11 @@ void StreamAccessUnit::executeInstruction() {
         bool broken = false;
         bool any_broken = false;
         bool *channel_sent = new bool[maa->m_org[ADDR_CHANNEL_LEVEL]];
+        DPRINTF(MAAStream, "%s: my_current:%d my_max:%d\n", __func__, my_current, my_max);
         for(; my_current < my_max; my_current += my_stride){
             my_i = (my_current - my_min)/my_stride;
             if(my_i >= maa->num_tile_elements){
+                DPRINTF(MAAStream, "%s: exceeding num_tile_elements:%d my_i:%d!\n", __func__, my_cond_tile, maa->num_tile_elements, my_i);
                 break;
             }
 
@@ -288,9 +275,9 @@ void StreamAccessUnit::executeInstruction() {
             uint64_t src_64 = 0;
             if(fetch_tiles_from_cache){
                 if(my_instruction->opcode == Instruction::OpcodeType::STREAM_ST){
-                    if(my_word_size ==4){
+                    if(my_word_size == 4){
                         src_avail = tilereadunitSrc->getData<uint32_t>(src_32, my_i, false);
-                    } else if(my_word_size ==4){
+                    } else if(my_word_size == 8){
                         src_avail = tilereadunitSrc->getData<uint64_t>(src_64, my_i, false);
                     }
 

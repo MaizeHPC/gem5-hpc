@@ -94,12 +94,13 @@ namespace gem5 {
     }
 
     bool TileRead::check_all_responses_received(){
+        DPRINTF(MAATileRead, "TR[%d] %s %s: TileID:%d expected_response:%d received_response:%d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, expected_response, received_response);
         return expected_response == received_response;
     }
 
     void TileRead::createAndSendTileExReads(int reqs_count){
         // tile_write_counter[TileID]
-        if(ready_to_req){
+        if(ready_to_req && ReadEx_current < tile_write_counter[TileID]){
             DPRINTF(MAATileRead, "TR[%d] %s %s: TileID:%d i=%d Write count is %d\n", my_indirect_id, __func__, func_unit_names[static_cast<int>(funcUnit)], TileID, ReadEx_current, tile_write_counter[TileID]);
         } else {
             return;

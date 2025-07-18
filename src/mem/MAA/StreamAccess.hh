@@ -82,9 +82,7 @@ protected:
     std::queue<int> sentmyIQueue;
     std::map<int, uint64_t> writeBuffer;
 
-    // modified Vasan
-    TileWrite* tilewriteunit;
-    TileRead* tilereadunitSrc;
+
 
 public:
     StreamAccessUnit();
@@ -123,6 +121,10 @@ public:
     void finish(const Fault &fault, const RequestPtr &req,
                 ThreadContext *tc, BaseMMU::Mode mode) override;
     MAA *maa;
+
+        // modified Vasan
+    TileWrite* tilewriteunit;
+    TileRead* tilereadunitSrc;
 
 protected:
     Instruction *my_instruction;

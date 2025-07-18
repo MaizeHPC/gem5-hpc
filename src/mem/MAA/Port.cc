@@ -867,12 +867,13 @@ void MAA::recvTimingResp(PacketPtr pkt, bool cached) {
         }
 
         // call the read tile units to progress 
-        indirectAccessUnits[tmp.maaIDs[i]].tilereadunitIdx->createAndSendTileExReads(1);
-        indirectAccessUnits[tmp.maaIDs[i]].tilereadunitSrc->createAndSendTileExReads(1);
-        aluUnits[tmp.maaIDs[i]].tilereadunitSrc1->createAndSendTileExReads(1);
-        aluUnits[tmp.maaIDs[i]].tilereadunitSrc2->createAndSendTileExReads(1);
-        rangeUnits[tmp.maaIDs[i]].tilereadunitMin->createAndSendTileExReads(1);
-        rangeUnits[tmp.maaIDs[i]].tilereadunitMax->createAndSendTileExReads(1);
+        indirectAccessUnits[tmp.maaIDs[i]].tilereadunitIdx->createAndSendTileExReads(10);
+        indirectAccessUnits[tmp.maaIDs[i]].tilereadunitSrc->createAndSendTileExReads(10);
+        aluUnits[tmp.maaIDs[i]].tilereadunitSrc1->createAndSendTileExReads(10);
+        aluUnits[tmp.maaIDs[i]].tilereadunitSrc2->createAndSendTileExReads(10);
+        rangeUnits[tmp.maaIDs[i]].tilereadunitMin->createAndSendTileExReads(10);
+        rangeUnits[tmp.maaIDs[i]].tilereadunitMax->createAndSendTileExReads(10);
+        streamAccessUnits[tmp.maaIDs[i]].tilereadunitSrc->createAndSendTileExReads(10);
     }
 
     
