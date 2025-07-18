@@ -220,8 +220,7 @@ void StreamAccessUnit::executeInstruction() {
 
         // Setting the state of the instruction and stream unit
         my_instruction->state = Instruction::Status::Service;
-        state = Status::Request;
-        scheduleExecuteInstructionEvent(Cycles(my_all_page_info.size() * 2));
+        // scheduleExecuteInstructionEvent(Cycles(my_all_page_info.size() * 2));
 
         const int num_initial_reqs = 100;
         if(fetch_tiles_from_cache){
@@ -241,8 +240,9 @@ void StreamAccessUnit::executeInstruction() {
         my_itr_max = -1;
         my_itr_max_final = -1;
 
-
-        break;
+        state = Status::Request;
+        [[fallthrough]];
+        // break;
     }
     case Status::Request: {
         DPRINTF(MAAStream, "S[%d] %s: requesting %s!\n", my_stream_id, __func__, my_instruction->print());
@@ -357,10 +357,12 @@ void StreamAccessUnit::executeInstruction() {
             } else if (my_instruction->opcode == Instruction::OpcodeType::STREAM_LD) {
                 DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %u (cond not taken)\n", my_stream_id, __func__, my_dst_tile, my_i, 0);
                 maa->spd->setFakeData(my_dst_tile, my_i, my_word_size);
-                if(my_word_size == 4){
-                    tilewriteunit->setdata<uint32_t>(0, my_i);
-                } else if(my_word_size == 8){
-                    tilewriteunit->setdata<uint64_t>(0, my_i);
+                if(fetch_tiles_from_cache){
+                    if(my_word_size == 4){
+                        tilewriteunit->setdata<uint32_t>(0, my_i);
+                    } else if(my_word_size == 8){
+                        tilewriteunit->setdata<uint64_t>(0, my_i);
+                    }
                 }
                 my_set_fake_max = std::max(my_set_fake_max, my_i);
             }
@@ -392,10 +394,10 @@ void StreamAccessUnit::executeInstruction() {
         }
 
         bool tileWriteUnitCheck, tileReadUnitCheck;
-        tileWriteUnitCheck = (dst_tile_id == -1 || fetch_tiles_from_cache) ? true : tilewriteunit->check_all_responses_received();
-        tileReadUnitCheck = (my_instruction->opcode != Instruction::OpcodeType::STREAM_ST || !fetch_tiles_from_cache) ? true : tilereadunitSrc->check_all_responses_received();
+        tileWriteUnitCheck = (dst_tile_id != -1 && fetch_tiles_from_cache) ? tilewriteunit->check_all_responses_received() : true;
+        tileReadUnitCheck = (my_instruction->opcode == Instruction::OpcodeType::STREAM_ST  && fetch_tiles_from_cache) ? tilereadunitSrc->check_all_responses_received() : true;
 
-        if ((my_received_responses != my_sent_requests) || !tileWriteUnitCheck || !tileReadUnitCheck || !maa->allStreamPacketsSent(my_stream_id)) {
+        if ((my_received_responses != my_sent_requests) || !tileWriteUnitCheck || !tileReadUnitCheck || !maa->allStreamPacketsSent(my_stream_id) || any_broken) {
             DPRINTF(MAAStream, "S[%d] %s: Waiting for responses, received (%d) != send (%d)...\n", my_stream_id, __func__, get_all_received(), get_all_sent());
         } else {
             if (my_cond_tile != -1 && maa->spd->getTileStatus(my_cond_tile,  (uint8_t)FuncUnitType::STREAM, my_stream_id) != SPD::TileStatus::Finished) {
@@ -521,11 +523,15 @@ bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached) 
             if (my_word_size == 4) {
                 DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %u\n", my_stream_id, __func__, my_dst_tile, itr, dataptr_u32_typed[wid]);
                 maa->spd->setData<uint32_t>(my_dst_tile, itr, dataptr_u32_typed[wid]);
-                tilewriteunit->setdata<uint32_t>(dataptr_u32_typed[wid], itr);
+                if(fetch_tiles_from_cache){
+                    tilewriteunit->setdata<uint32_t>(dataptr_u32_typed[wid], itr);
+                }
             } else {
                 DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %lu\n", my_stream_id, __func__, my_dst_tile, itr, dataptr_u64_typed[wid]);
                 maa->spd->setData<uint64_t>(my_dst_tile, itr, dataptr_u64_typed[wid]);
-                tilewriteunit->setdata<uint64_t>(dataptr_u64_typed[wid], itr);
+                if(fetch_tiles_from_cache){
+                    tilewriteunit->setdata<uint64_t>(dataptr_u64_typed[wid], itr);
+                }
             }
             /********************************/
             break;

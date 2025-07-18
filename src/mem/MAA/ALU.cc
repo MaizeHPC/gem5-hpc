@@ -203,14 +203,13 @@ void ALUUnit::executeInstruction() {
         TW_received_responses = 0;
 
         const int num_initial_reqs = 100;
-        if(my_dst_tile != -1){
-            tilewriteunit->set(my_dst_tile, my_output_word_size, my_instruction->CID, 
-                            my_instruction->PC, my_output_word_size*my_output_words_per_cl);
-            tilewriteunit->createAndSendTileExReads(num_initial_reqs);
-        }
-
-
         if(fetch_tiles_from_cache){
+            if(my_dst_tile != -1){
+                tilewriteunit->set(my_dst_tile, my_output_word_size, my_instruction->CID, 
+                                my_instruction->PC, my_output_word_size*my_output_words_per_cl);
+                tilewriteunit->createAndSendTileExReads(num_initial_reqs);
+            }
+
             if(my_src1_tile != -1){
                 tilereadunitSrc1->set(my_src1_tile, my_input_word_size, my_instruction->CID, my_instruction->PC, BlkSize); // IDX tile is always 4 bytes
                 tilereadunitSrc1->createAndSendTileExReads(num_initial_reqs);
@@ -424,7 +423,9 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32_compare;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32_compare);
-                            tilewriteunit->setdata<uint32_t>(result_u32_compare, my_i);
+                            if(fetch_tiles_from_cache){
+                                tilewriteunit->setdata<uint32_t>(result_u32_compare, my_i);
+                            }
                             num_spd_write_accesses++;
                         }
                         (*maa->stats.ALU_NumComparedWords[my_alu_id])++;
@@ -436,7 +437,9 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32_compute;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32_compute);
-                            tilewriteunit->setdata<uint32_t>(result_u32_compute, my_i);
+                            if(fetch_tiles_from_cache){
+                                tilewriteunit->setdata<uint32_t>(result_u32_compute, my_i);
+                            }
                             num_spd_write_accesses++;
                         }
                     }
@@ -530,7 +533,9 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32);
-                            tilewriteunit->setdata<uint32_t>(result_u32, my_i);;
+                            if(fetch_tiles_from_cache){
+                                tilewriteunit->setdata<uint32_t>(result_u32, my_i);
+                            }
                             num_spd_write_accesses++;
                         }
                         (*maa->stats.ALU_NumComparedWords[my_alu_id])++;
@@ -542,7 +547,9 @@ void ALUUnit::executeInstruction() {
                             my_red_i32 = result_i32;
                         } else {
                             maa->spd->setData<int32_t>(my_dst_tile, my_i, result_i32);
-                            tilewriteunit->setdata<int32_t>(result_i32, my_i);
+                            if(fetch_tiles_from_cache){
+                                tilewriteunit->setdata<int32_t>(result_i32, my_i);
+                            }
                             num_spd_write_accesses++;
                         }
                     }
@@ -621,7 +628,9 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32);
-                            tilewriteunit->setdata<uint32_t>(result_u32, my_i);
+                            if(fetch_tiles_from_cache){
+                                tilewriteunit->setdata<uint32_t>(result_u32, my_i);
+                            }
                             num_spd_write_accesses++;
                         }
                         (*maa->stats.ALU_NumComparedWords[my_alu_id])++;
@@ -633,7 +642,9 @@ void ALUUnit::executeInstruction() {
                             my_red_f32 = result_f32;
                         } else {
                             maa->spd->setData<float>(my_dst_tile, my_i, result_f32);
-                            tilewriteunit->setdata<float>(result_f32, my_i);
+                            if(fetch_tiles_from_cache){
+                                tilewriteunit->setdata<float>(result_f32, my_i);
+                            }
                             num_spd_write_accesses++;
                         }
                     }
@@ -728,7 +739,9 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32);
-                            tilewriteunit->setdata<uint32_t>(result_u32, my_i);
+                            if(fetch_tiles_from_cache){
+                                tilewriteunit->setdata<uint32_t>(result_u32, my_i);
+                            }
                             num_spd_write_accesses++;
                         }
                         (*maa->stats.ALU_NumComparedWords[my_alu_id])++;
@@ -740,7 +753,9 @@ void ALUUnit::executeInstruction() {
                             my_red_u64 = result_u64;
                         } else {
                             maa->spd->setData<uint64_t>(my_dst_tile, my_i, result_u64);
-                            tilewriteunit->setdata<uint64_t>(result_u64, my_i);
+                            if(fetch_tiles_from_cache){
+                                tilewriteunit->setdata<uint64_t>(result_u64, my_i);
+                            }
                             num_spd_write_accesses++;
                         }
                     }
@@ -834,7 +849,9 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32);
-                            tilewriteunit->setdata<uint32_t>(result_u32, my_i);
+                            if(fetch_tiles_from_cache){
+                                tilewriteunit->setdata<uint32_t>(result_u32, my_i);
+                            }
                             num_spd_write_accesses++;
                         }
                         (*maa->stats.ALU_NumComparedWords[my_alu_id])++;
@@ -846,7 +863,9 @@ void ALUUnit::executeInstruction() {
                             my_red_i64 = result_i64;
                         } else {
                             maa->spd->setData<uint64_t>(my_dst_tile, my_i, result_i64);
-                            tilewriteunit->setdata<uint64_t>(result_i64, my_i);
+                            if(fetch_tiles_from_cache){
+                                tilewriteunit->setdata<uint64_t>(result_i64, my_i);
+                            }
                             num_spd_write_accesses++;
                         }
                     }
@@ -926,7 +945,9 @@ void ALUUnit::executeInstruction() {
                             my_red_u32 = result_u32;
                         } else {
                             maa->spd->setData<uint32_t>(my_dst_tile, my_i, result_u32);
-                            tilewriteunit->setdata<uint32_t>(result_u32, my_i);
+                            if(fetch_tiles_from_cache){
+                                tilewriteunit->setdata<uint32_t>(result_u32, my_i);
+                            }
                             num_spd_write_accesses++;
                         }
                         (*maa->stats.ALU_NumComparedWords[my_alu_id])++;
@@ -938,7 +959,9 @@ void ALUUnit::executeInstruction() {
                             my_red_f64 = result_f64;
                         } else {
                             maa->spd->setData<double>(my_dst_tile, my_i, result_f64);
-                            tilewriteunit->setdata<double>(result_f64, my_i);
+                            if(fetch_tiles_from_cache){
+                                tilewriteunit->setdata<double>(result_f64, my_i);
+                            }
                             num_spd_write_accesses++;
                         }
                     }
@@ -955,12 +978,16 @@ void ALUUnit::executeInstruction() {
                     my_instruction->optype == Instruction::OPType::LTE_OP ||
                     my_instruction->optype == Instruction::OPType::EQ_OP) {
                     maa->spd->setData<uint32_t>(my_dst_tile, my_i, 0);
-                    tilewriteunit->setdata<uint32_t>(0, my_i);
+                    if(fetch_tiles_from_cache){
+                        tilewriteunit->setdata<uint32_t>(0, my_i);
+                    }
                 } else {
                     switch (my_instruction->datatype) {
                     case Instruction::DataType::UINT32_TYPE: {
                         maa->spd->setData<uint32_t>(my_dst_tile, my_i, 0);
-                        tilewriteunit->setdata<uint32_t>(0, my_i);
+                        if(fetch_tiles_from_cache){
+                            tilewriteunit->setdata<uint32_t>(0, my_i);
+                        }
                         break;
                     }
                     case Instruction::DataType::INT32_TYPE: {
@@ -970,22 +997,30 @@ void ALUUnit::executeInstruction() {
                     }
                     case Instruction::DataType::FLOAT32_TYPE: {
                         maa->spd->setData<float>(my_dst_tile, my_i, 0);
-                        tilewriteunit->setdata<float>(0, my_i);
+                        if(fetch_tiles_from_cache){
+                            tilewriteunit->setdata<float>(0, my_i);
+                        }
                         break;
                     }
                     case Instruction::DataType::UINT64_TYPE: {
                         maa->spd->setData<uint64_t>(my_dst_tile, my_i, 0);
-                        tilewriteunit->setdata<uint64_t>(0, my_i);
+                        if(fetch_tiles_from_cache){
+                            tilewriteunit->setdata<uint64_t>(0, my_i);
+                        }
                         break;
                     }
                     case Instruction::DataType::INT64_TYPE: {
                         maa->spd->setData<int64_t>(my_dst_tile, my_i, 0);
-                        tilewriteunit->setdata<int64_t>(0, my_i);
+                        if(fetch_tiles_from_cache){
+                            tilewriteunit->setdata<int64_t>(0, my_i);
+                        }
                         break;
                     }
                     case Instruction::DataType::FLOAT64_TYPE: {
                         maa->spd->setData<double>(my_dst_tile, my_i, 0);
-                        tilewriteunit->setdata<double>(0, my_i);
+                        if(fetch_tiles_from_cache){
+                            tilewriteunit->setdata<double>(0, my_i);
+                        }
                         break;
                     }
                     default:
@@ -1015,14 +1050,20 @@ void ALUUnit::executeInstruction() {
         updateLatency(num_spd_read_data_accesses, num_spd_read_cond_accesses, num_spd_write_accesses, num_alu_accesses);
         DPRINTF(MAAALU, "A[%d] %s: setting state to Wait for request %s!\n", my_alu_id, __func__, my_instruction->print());
         if(my_max != -1 && my_i == my_max){
-            tilewriteunit->set_max_element(my_max);
+            if(fetch_tiles_from_cache){
+                tilewriteunit->set_max_element(my_max);
+            }
         }
         state = Status::Wait;
         scheduleNextExecution(true);
         break;
     }
     case Status::Wait: {
-        if(tilereadunitSrc1->check_all_responses_received() && tilereadunitSrc2->check_all_responses_received() && tilewriteunit->check_all_responses_received()){
+        bool src1_check  = fetch_tiles_from_cache ? tilereadunitSrc1->check_all_responses_received() : true;
+        bool src2_check  = fetch_tiles_from_cache ? tilereadunitSrc2->check_all_responses_received() : true;
+        bool dest_check = fetch_tiles_from_cache ? tilewriteunit->check_all_responses_received() : true;
+
+        if( src1_check && src2_check && dest_check){
             state = Status::Finish;
             DPRINTF(MAAALU, "A[%d] %s: setting state to finish for request %s!\n", my_alu_id, __func__, my_instruction->print());
             scheduleNextExecution(true);
@@ -1105,7 +1146,10 @@ void ALUUnit::scheduleExecuteInstructionEvent(int latency) {
 }
 
 bool ALUUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached){
-    bool ret1 = tilewriteunit->recv_data(addr, dataptr, cached);
+    bool ret1 = false;
+    if(fetch_tiles_from_cache){
+        ret1 = tilewriteunit->recv_data(addr, dataptr, cached);
+    }
     if(TW_sent_requests == TW_received_responses && TW_sent_requests != 0){
         scheduleNextExecution(true);
     }

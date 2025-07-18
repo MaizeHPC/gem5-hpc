@@ -88,7 +88,7 @@ MAA::MAA(const MAAParams &p)
     streamAccessUnits = new StreamAccessUnit[num_maas];
     streamAccessIdle = new bool[num_maas];
 
-    fetch_tiles_from_cache = true;
+    fetch_tiles_from_cache = false;
 
     for (int i = 0; i < num_maas; i++) {
         streamAccessUnits[i].allocate(i, num_request_table_addresses, num_request_table_entries_per_address, num_tile_elements, this, fetch_tiles_from_cache);

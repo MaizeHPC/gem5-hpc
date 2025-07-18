@@ -132,19 +132,20 @@ void RangeFuserUnit::executeInstruction() {
         TW_received_responses_1 = 0;
         TW_sent_requests_1 = 0;
 
-        if(my_dst_i_tile != -1){
-            tilewriteunit_0->set(my_dst_i_tile, my_word_size,  my_instruction->CID, my_instruction->PC, block_size);
-            int num_initial_reqs = 100;
-            tilewriteunit_0->createAndSendTileExReads(num_initial_reqs);
-        }
-
-        if(my_dst_j_tile != -1){
-            tilewriteunit_1->set(my_dst_j_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size);
-            int num_initial_reqs = 100;
-            tilewriteunit_1->createAndSendTileExReads(num_initial_reqs);
-        }
 
         if(fetch_tiles_from_cache){
+            if(my_dst_i_tile != -1){
+                tilewriteunit_0->set(my_dst_i_tile, my_word_size,  my_instruction->CID, my_instruction->PC, block_size);
+                int num_initial_reqs = 100;
+                tilewriteunit_0->createAndSendTileExReads(num_initial_reqs);
+            }
+
+            if(my_dst_j_tile != -1){
+                tilewriteunit_1->set(my_dst_j_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size);
+                int num_initial_reqs = 100;
+                tilewriteunit_1->createAndSendTileExReads(num_initial_reqs);
+            }
+        
             if(my_min_tile != -1){
                 tilereadunitMin->set(my_min_tile, my_word_size,  my_instruction->CID, my_instruction->PC, block_size, my_last_i);
             }
@@ -284,8 +285,10 @@ void RangeFuserUnit::executeInstruction() {
                     maa->spd->setData(my_dst_i_tile, my_idx_j, my_last_i);
                     maa->spd->setData(my_dst_j_tile, my_idx_j, my_last_j);
 
-                    tilewriteunit_0->setdata<uint32_t>(my_last_i, my_idx_j);
-                    tilewriteunit_1->setdata<uint32_t>(my_last_j, my_idx_j);
+                    if(fetch_tiles_from_cache){
+                        tilewriteunit_0->setdata<uint32_t>(my_last_i, my_idx_j);
+                        tilewriteunit_1->setdata<uint32_t>(my_last_j, my_idx_j);
+                    }
 
                     // maa->spd->SPDQueues[my_dst_i_tile].push(my_last_i);
                     // maa->spd->SPDQueues[my_dst_j_tile].push(my_last_j);
@@ -312,18 +315,23 @@ void RangeFuserUnit::executeInstruction() {
         my_max_tile_ready = true;
         updateLatency(num_spd_read_accesses, num_spd_write_accesses, num_computed_words);
         DPRINTF(MAARangeFuser, "R[%d] %s: setting state to wait for request %s!\n", my_range_id, __func__, my_instruction->print());
-        tilewriteunit_0->set_max_element(my_idx_j);
-        tilewriteunit_1->set_max_element(my_idx_j);
-        tilereadunitMin->mark_last_element_reached();
-        tilereadunitMax->mark_last_element_reached();
+        if(fetch_tiles_from_cache){
+            tilewriteunit_0->set_max_element(my_idx_j);
+            tilewriteunit_1->set_max_element(my_idx_j);
+            tilereadunitMin->mark_last_element_reached();
+            tilereadunitMax->mark_last_element_reached();
+        }
 
         state = Status::Wait;
         scheduleNextExecution(true);
         break;
     }
     case Status::Wait: {
-        if((tilewriteunit_0->check_all_responses_received() && tilewriteunit_1->check_all_responses_received() &&
-            tilereadunitMin->check_all_responses_received() && tilereadunitMax->check_all_responses_received())){
+        bool tw0_check = fetch_tiles_from_cache ? tilewriteunit_0->check_all_responses_received() : true;
+        bool tw1_check = fetch_tiles_from_cache ? tilewriteunit_1->check_all_responses_received() : true;
+        bool tr0_check = fetch_tiles_from_cache ? tilereadunitMin->check_all_responses_received() : true;
+        bool tr1_check = fetch_tiles_from_cache ? tilereadunitMax->check_all_responses_received() : true;
+        if(( tw0_check && tw1_check && tr0_check && tr1_check)){
             state = Status::Finish;
             DPRINTF(MAARangeFuser, "A[%d] %s: setting state to finish for request %s!\n", my_range_id, __func__, my_instruction->print());
             scheduleNextExecution(true);
@@ -378,12 +386,14 @@ void RangeFuserUnit::scheduleExecuteInstructionEvent(int latency) {
 }
 
 bool RangeFuserUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached){
-    bool ret0 = tilewriteunit_0->recv_data(addr, dataptr, cached);
-    bool ret1 = tilewriteunit_1->recv_data(addr, dataptr, cached);
-
+    bool ret0 = false;
+    bool ret1 = false;
     bool ret2 = false;
     bool ret3 = false;
+
     if(fetch_tiles_from_cache) {
+        ret0 = tilewriteunit_0->recv_data(addr, dataptr, cached);
+        ret1 = tilewriteunit_1->recv_data(addr, dataptr, cached);
         ret2 = tilereadunitMin->recv_data(addr, dataptr, cached);
         ret3 = tilereadunitMax->recv_data(addr, dataptr, cached);
     }

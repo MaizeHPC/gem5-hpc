@@ -495,7 +495,7 @@ void IndirectAccessUnit::fillRequestTable(bool &finished, bool &waitForFinish, b
                 maa->spd->setSize(my_dst_tile, my_i);
             }
             if (checkReadyForFinish()) {
-                if(my_dst_tile != -1){
+                if(my_dst_tile != -1 && fetch_tiles_from_cache){
                     tilewriteunit->set_max_element(my_max);
                 }
                 DPRINTF(MAAIndirect, "I[%d] %s: reached finished status!\n", my_indirect_id, __func__);
@@ -672,10 +672,12 @@ void IndirectAccessUnit::fillRequestTable(bool &finished, bool &waitForFinish, b
             DPRINTF(MAAIndirect, "I[%d] %s: SPD[%d][%d] = %u (cond not taken)\n", my_indirect_id, __func__, my_dst_tile, my_i, 0);
             set_fake_max = std::max(set_fake_max, my_i);
             maa->spd->setFakeData(my_dst_tile, my_i, my_word_size);
-            if(my_word_size == 4){
-                tilewriteunit->setdata<uint32_t>(0, my_i);
-            } else if(my_word_size == 8){
-                tilewriteunit->setdata<uint64_t>(0, my_i);
+            if(fetch_tiles_from_cache){
+                if(my_word_size == 4){
+                    tilewriteunit->setdata<uint32_t>(0, my_i);
+                } else if(my_word_size == 8){
+                    tilewriteunit->setdata<uint64_t>(0, my_i);
+                }
             }
         }
 
@@ -803,12 +805,13 @@ void IndirectAccessUnit::executeInstruction() {
 
         // 
         const int num_initial_reqs = 100;
-        if(my_dst_tile != -1){
-            tilewriteunit->set(my_dst_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size);
-            tilewriteunit->createAndSendTileExReads(num_initial_reqs);
-        }
-
         if(fetch_tiles_from_cache){
+
+            if(my_dst_tile != -1){
+                tilewriteunit->set(my_dst_tile, my_word_size, my_instruction->CID, my_instruction->PC, block_size);
+                tilewriteunit->createAndSendTileExReads(num_initial_reqs);
+            }
+
             if(my_idx_tile != -1){
                 tilereadunitIdx->set(my_idx_tile, 4, my_instruction->CID, my_instruction->PC, block_size); // IDX tile is always 4 bytes
                 tilereadunitIdx->createAndSendTileExReads(num_initial_reqs);
@@ -955,7 +958,7 @@ void IndirectAccessUnit::executeInstruction() {
 
         int offset_cache_tile_write = CacheTileWrite ? CacheTileWriteCount : 0;
         // if (maa->allIndirectPacketsSent(my_indirect_id) && get_all_received() == get_all_expected() + offset_cache_tile_write) {
-        bool tileWriteUnitCheck = (my_dst_tile == -1) ? true : tilewriteunit->check_all_responses_received();
+        bool tileWriteUnitCheck = (my_dst_tile == -1 || !fetch_tiles_from_cache) ? true : tilewriteunit->check_all_responses_received();
         bool tileReadIdxCheck = fetch_tiles_from_cache ? tilereadunitIdx->check_all_responses_received() : true;
         bool tileReadSrcCheck = (my_src_tile == -1 || !fetch_tiles_from_cache) ? true : tilereadunitSrc->check_all_responses_received();
 
@@ -1127,15 +1130,14 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
     
 
    
-
-    if(my_dst_tile != -1) {
-        if(tilewriteunit->recv_data(addr, dataptr, is_block_cached)){
-            scheduleNextExecution(true);
-            return true;
-        }
-    }
-
     if(fetch_tiles_from_cache){
+        if(my_dst_tile != -1) {
+            if(tilewriteunit->recv_data(addr, dataptr, is_block_cached)){
+                scheduleNextExecution(true);
+                return true;
+            }
+        }
+
         if(my_idx_tile != -1) {
             if(tilereadunitIdx->recv_data(addr, dataptr, is_block_cached)){
                 scheduleNextExecution(true);
@@ -1208,12 +1210,16 @@ bool IndirectAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool is_blo
         if (my_dst_tile != -1) {
             if (my_word_size == 4) {
                 writeBuffer[itr] = dataptr_u32_typed[wid];
-                tilewriteunit->setdata<uint32_t>(dataptr_u32_typed[wid], itr);
+                if(fetch_tiles_from_cache){
+                    tilewriteunit->setdata<uint32_t>(dataptr_u32_typed[wid], itr);
+                }
                 maa->spd->setData<uint32_t>(my_dst_tile, itr, dataptr_u32_typed[wid]);
                 DPRINTF(MAAIndirect, "I[%d] %s: SPD_noWrite[%d][%d] = %u/%d/%f!\n", my_indirect_id, __func__, my_dst_tile, itr, ((uint32_t *)new_data)[wid], ((int32_t *)new_data)[wid], ((float *)new_data)[wid]);
             } else {
                 writeBuffer[itr] = dataptr_u64_typed[wid];
-                tilewriteunit->setdata<uint64_t>(dataptr_u64_typed[wid], itr);
+                if(fetch_tiles_from_cache){
+                    tilewriteunit->setdata<uint64_t>(dataptr_u64_typed[wid], itr);
+                }
                 maa->spd->setData<uint64_t>(my_dst_tile, itr, dataptr_u64_typed[wid]);
                 DPRINTF(MAAIndirect, "I[%d] %s: SPD_noWrite[%d][%d] = %lu/%ld/%lf!\n", my_indirect_id, __func__, my_dst_tile, itr, ((uint64_t *)new_data)[wid], ((int64_t *)new_data)[wid], ((double *)new_data)[wid]);
             }
