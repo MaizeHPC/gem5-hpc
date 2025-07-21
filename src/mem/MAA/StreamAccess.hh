@@ -136,6 +136,7 @@ protected:
     int8_t my_addr_range_id;
     int my_src_tile, my_dst_tile, my_cond_tile, my_min, my_max, my_stride, my_current, my_i;
     int64_t my_last_block_vaddr;
+    bool flag_first_vaddr;
     int my_received_responses, my_sent_requests;
     int TW_received_responses, TW_sent_requests;
     int my_received_itr_max, my_set_fake_max, my_itr_max, my_itr_max_final;

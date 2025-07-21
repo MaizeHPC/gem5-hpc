@@ -186,10 +186,18 @@ void StreamAccessUnit::executeInstruction() {
         }
         maa->stats.numInst++;
 
-        my_last_block_vaddr = -1;
+
         my_min_addr = my_instruction->minAddr;
         my_max_addr = my_instruction->maxAddr;
         my_addr_range_id = my_instruction->addrRangeID;
+
+
+        Addr vaddr = my_base_addr + my_word_size * my_min;
+        panic_if(vaddr < my_min_addr || vaddr >= my_max_addr, "S[%d] %s: vaddr 0x%lx out of range [0x%lx, 0x%lx)!\n", my_stream_id, __func__, vaddr, my_min_addr, my_max_addr);
+        Addr block_vaddr = addrBlockAligner(vaddr, block_size);
+        // Addr paddr = translatePacket(block_vaddr);
+        my_last_block_vaddr = block_vaddr;
+        flag_first_vaddr = true;
 
         // Initialization
         my_received_responses = 0;
@@ -244,10 +252,12 @@ void StreamAccessUnit::executeInstruction() {
         bool any_broken = false;
         bool *channel_sent = new bool[maa->m_org[ADDR_CHANNEL_LEVEL]];
         DPRINTF(MAAStream, "%s: my_current:%d my_max:%d\n", __func__, my_current, my_max);
+        panic_if(num_tile_elements <= 0, "Number of Tile elements should be greater or equal to zero");
+        
         for(; my_current < my_max; my_current += my_stride){
             my_i = (my_current - my_min)/my_stride;
-            if(my_i >= maa->num_tile_elements){
-                DPRINTF(MAAStream, "%s: exceeding num_tile_elements:%d my_i:%d!\n", __func__, my_cond_tile, maa->num_tile_elements, my_i);
+            if(my_i >= my_size){
+                DPRINTF(MAAStream, "%s: exceeding, num_tile_elements:%d my_i:%d!\n", __func__, num_tile_elements, my_i);
                 break;
             }
 
@@ -296,6 +306,9 @@ void StreamAccessUnit::executeInstruction() {
 
                 Addr paddr = translatePacket(block_vaddr);
                 uint16_t word_id = (vaddr - block_vaddr) / my_word_size;
+
+                // std::vector<RequestTableEntry> entries = request_table->get_entries_no_delete(paddr);
+                // bool firstCachelineAccess = (entries.size() == 0);
                 bool inserted; 
                 if (my_instruction->opcode == Instruction::OpcodeType::STREAM_ST){
                     if(fetch_tiles_from_cache){
@@ -332,11 +345,29 @@ void StreamAccessUnit::executeInstruction() {
 
                 }
 
-                if (block_vaddr != my_last_block_vaddr) {
+                if(flag_first_vaddr){
+                    my_last_block_vaddr = block_vaddr;
+                    flag_first_vaddr = false;
+                }
+
+                if (block_vaddr != my_last_block_vaddr || my_i == my_size -1) {
                     std::vector<int> addr_vec = maa->map_addr(paddr);
-                    my_sent_requests++;
                     num_request_table_cacheline_accesses++;
-                    createReadPacket(paddr, num_request_table_cacheline_accesses);
+                    Addr paddr_send; 
+                    if(block_vaddr != my_last_block_vaddr){
+                        paddr_send = translatePacket(my_last_block_vaddr);
+                        DPRINTF(MAAStream, "S[%d] %s: Sending Request my_i:%d my_last_block_vaddr=%x block_vaddr:%x paddr:%x paddr_send:%x\n", my_stream_id, __func__, my_i, my_last_block_vaddr, block_vaddr, paddr, paddr_send);
+                        my_sent_requests++;
+                        createReadPacket(paddr_send, num_request_table_cacheline_accesses); 
+
+                    } 
+                    
+                    if(my_i == my_size -1) {
+                        DPRINTF(MAAStream, "S[%d] %s: Sending Request my_i:%d my_last_block_vaddr=%x block_vaddr:%x paddr:%x paddr_send:%x\n", my_stream_id, __func__, my_i, my_last_block_vaddr, block_vaddr, paddr, paddr_send);
+                        my_sent_requests++;
+                        createReadPacket(paddr, num_request_table_cacheline_accesses); 
+                    }
+
                     channel_sent[addr_vec[ADDR_CHANNEL_LEVEL]] = true;
                     my_last_block_vaddr = block_vaddr;
                 }
@@ -384,8 +415,9 @@ void StreamAccessUnit::executeInstruction() {
         tileWriteUnitCheck = (dst_tile_id != -1 && fetch_tiles_from_cache) ? tilewriteunit->check_all_responses_received() : true;
         tileReadUnitCheck = (my_instruction->opcode == Instruction::OpcodeType::STREAM_ST  && fetch_tiles_from_cache) ? tilereadunitSrc->check_all_responses_received() : true;
 
+
         if ((my_received_responses != my_sent_requests) || !tileWriteUnitCheck || !tileReadUnitCheck || !maa->allStreamPacketsSent(my_stream_id) || any_broken) {
-            DPRINTF(MAAStream, "S[%d] %s: Waiting for responses, received (%d) != send (%d)...\n", my_stream_id, __func__, get_all_received(), get_all_sent());
+            DPRINTF(MAAStream, "S[%d] %s: Waiting for responses, received (%d) != send (%d)...\n", my_stream_id, __func__, my_sent_requests, my_received_responses);
         } else {
             if (my_cond_tile != -1 && maa->spd->getTileStatus(my_cond_tile,  (uint8_t)FuncUnitType::STREAM, my_stream_id) != SPD::TileStatus::Finished) {
                 DPRINTF(MAAStream, "S[%d] %s: Waiting for cond tile %d to finish...\n", my_stream_id, __func__, my_cond_tile);
@@ -454,20 +486,20 @@ void StreamAccessUnit::writePacketSent(Addr addr) {
     // if(my_received_responses == my_sent_requests){
     //     tilewriteunit->mark_last_element_reached();
     // }
-    if (maa->allStreamPacketsSent(my_stream_id) && (get_all_received() == get_all_sent() )) {
+    if (maa->allStreamPacketsSent(my_stream_id) && (my_sent_requests == my_received_responses )) {
         DPRINTF(MAAStream, "S[%d] %s: all responses received, calling execution again in state %s!\n", my_stream_id, __func__, status_names[(int)state]);
         scheduleNextExecution(true);
     } else {
-        DPRINTF(MAAStream, "S[%d] %s: expected: %d, received: %d!\n", my_stream_id, __func__,  get_all_sent(), get_all_received());
+        DPRINTF(MAAStream, "S[%d] %s: expected: %d, received: %d!\n", my_stream_id, __func__,  my_sent_requests, my_received_responses);
     }
 }
 bool StreamAccessUnit::recvData(const Addr addr, uint8_t *dataptr, bool cached) {
 
     if(fetch_tiles_from_cache){
         if(tilewriteunit->recv_data(addr, dataptr, cached)){
-            DPRINTF(MAAStream, "S[%d] %s: expected: %d, received: %d!\n", my_stream_id, __func__, get_all_sent() , get_all_received());
-            DPRINTF(MAAStream, "S[%d] %s: my_received_responses: %d, TW_received_responses: %d!\n", my_stream_id, __func__, my_received_responses , TW_received_responses);
-            DPRINTF(MAAStream, "S[%d] %s: my_sent_requests: %d, TW_sent_requests: %d!\n", my_stream_id, __func__, my_sent_requests, TW_sent_requests);
+            // DPRINTF(MAAStream, "S[%d] %s: expected: %d, received: %d!\n", my_stream_id, __func__, get_all_sent() , get_all_received());
+            // DPRINTF(MAAStream, "S[%d] %s: my_received_responses: %d, TW_received_responses: %d!\n", my_stream_id, __func__, my_received_responses , TW_received_responses);
+            // DPRINTF(MAAStream, "S[%d] %s: my_sent_requests: %d, TW_sent_requests: %d!\n", my_stream_id, __func__, my_sent_requests, TW_sent_requests);
             if (maa->allStreamPacketsSent(my_stream_id) && get_all_received() == get_all_sent()) {
                 DPRINTF(MAAStream, "S[%d] %s: all responses received, calling execution again in state %s!\n", my_stream_id, __func__, status_names[(int)state]);
                 scheduleNextExecution(true);

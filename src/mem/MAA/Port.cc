@@ -625,7 +625,7 @@ bool MAA::sendOutstandingCachePacket() {
                 panic_if(tmp.funcUnits[0] != FuncUnitType::STREAM, "%s: func unit type %d does not match with %d\n", __func__, func_unit_names[(uint8_t)tmp.funcUnits[0]], func_unit_names[(uint8_t)FuncUnitType::STREAM]);
                 my_num_outstanding_stream_pkts[tmp.maaIDs[0]]--;
                 DPRINTF(MAAPort, "%s: outstanding stream count %d\n", __func__, my_num_outstanding_stream_pkts[tmp.maaIDs[0]]);
-                if(tmp.cmd != MemCmd::WriteReq){
+                if(tmp.cmd == MemCmd::WritebackDirty){
                     streamAccessUnits[tmp.maaIDs[0]].writePacketSent(it->paddr);
                 }
                 it = my_outstanding_stream_cache_write_pkts[core].erase(it);
