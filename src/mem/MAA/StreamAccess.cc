@@ -233,6 +233,8 @@ void StreamAccessUnit::executeInstruction() {
         my_itr_max = -1;
         my_itr_max_final = -1;
 
+        element_there_but_not_requested = false;
+
         state = Status::Request;
         [[fallthrough]];
         // break;
@@ -254,7 +256,7 @@ void StreamAccessUnit::executeInstruction() {
         DPRINTF(MAAStream, "%s: my_current:%d my_max:%d\n", __func__, my_current, my_max);
         panic_if(num_tile_elements <= 0, "Number of Tile elements should be greater or equal to zero");
         
-        bool element_there_but_not_requested = false;
+        
         for(; my_current < my_max; my_current += my_stride){
             my_i = (my_current - my_min)/my_stride;
             if(my_i >= my_size){
