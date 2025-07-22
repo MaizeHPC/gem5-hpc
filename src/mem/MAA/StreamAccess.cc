@@ -254,6 +254,7 @@ void StreamAccessUnit::executeInstruction() {
         DPRINTF(MAAStream, "%s: my_current:%d my_max:%d\n", __func__, my_current, my_max);
         panic_if(num_tile_elements <= 0, "Number of Tile elements should be greater or equal to zero");
         
+        bool element_there_but_not_requested = false;
         for(; my_current < my_max; my_current += my_stride){
             my_i = (my_current - my_min)/my_stride;
             if(my_i >= my_size){
@@ -299,14 +300,16 @@ void StreamAccessUnit::executeInstruction() {
                 }
             }
 
+            Addr vaddr = my_base_addr + my_word_size * my_current;
+            panic_if(vaddr < my_min_addr || vaddr >= my_max_addr, "S[%d] %s: vaddr 0x%lx out of range [0x%lx, 0x%lx)!\n", my_stream_id, __func__, vaddr, my_min_addr, my_max_addr);
+            Addr block_vaddr = addrBlockAligner(vaddr, block_size);
+            Addr paddr = translatePacket(block_vaddr);
+
+            uint16_t word_id = (vaddr - block_vaddr) / my_word_size;
+            uint16_t num_words_per_cl = 64/my_word_size;
+
             if (my_cond_tile == -1 || maa->spd->getData<uint32_t>(my_cond_tile, my_i) != 0) {
-                Addr vaddr = my_base_addr + my_word_size * my_current;
-                panic_if(vaddr < my_min_addr || vaddr >= my_max_addr, "S[%d] %s: vaddr 0x%lx out of range [0x%lx, 0x%lx)!\n", my_stream_id, __func__, vaddr, my_min_addr, my_max_addr);
-                Addr block_vaddr = addrBlockAligner(vaddr, block_size);
-
-                Addr paddr = translatePacket(block_vaddr);
-                uint16_t word_id = (vaddr - block_vaddr) / my_word_size;
-
+                element_there_but_not_requested = true;
                 // std::vector<RequestTableEntry> entries = request_table->get_entries_no_delete(paddr);
                 // bool firstCachelineAccess = (entries.size() == 0);
                 bool inserted; 
@@ -344,33 +347,17 @@ void StreamAccessUnit::executeInstruction() {
                             my_stream_id, my_i, block_vaddr, paddr, word_id);
 
                 }
-
-                if(flag_first_vaddr){
-                    my_last_block_vaddr = block_vaddr;
-                    flag_first_vaddr = false;
-                }
-
-                if (block_vaddr != my_last_block_vaddr || my_i == my_size -1) {
-                    std::vector<int> addr_vec = maa->map_addr(paddr);
-                    num_request_table_cacheline_accesses++;
-                    Addr paddr_send; 
-                    if(block_vaddr != my_last_block_vaddr){
-                        paddr_send = translatePacket(my_last_block_vaddr);
-                        DPRINTF(MAAStream, "S[%d] %s: Sending Request my_i:%d my_last_block_vaddr=%x block_vaddr:%x paddr:%x paddr_send:%x\n", my_stream_id, __func__, my_i, my_last_block_vaddr, block_vaddr, paddr, paddr_send);
-                        my_sent_requests++;
-                        createReadPacket(paddr_send, num_request_table_cacheline_accesses); 
-
-                    } 
-                    
-                    if(my_i == my_size -1) {
-                        DPRINTF(MAAStream, "S[%d] %s: Sending Request my_i:%d my_last_block_vaddr=%x block_vaddr:%x paddr:%x paddr_send:%x\n", my_stream_id, __func__, my_i, my_last_block_vaddr, block_vaddr, paddr, paddr_send);
-                        my_sent_requests++;
-                        createReadPacket(paddr, num_request_table_cacheline_accesses); 
-                    }
-
-                    channel_sent[addr_vec[ADDR_CHANNEL_LEVEL]] = true;
-                    my_last_block_vaddr = block_vaddr;
-                }
+                // if (word_id + my_stride >=  num_words_per_cl) {
+                //     element_there_but_not_requested = false;
+                //     std::vector<int> addr_vec = maa->map_addr(paddr);
+                //     num_request_table_cacheline_accesses++;
+                //     Addr paddr_send = translatePacket(block_vaddr);
+                //     DPRINTF(MAAStream, "S[%d] %s: Sending Request my_i:%d my_last_block_vaddr=%x block_vaddr:%x paddr:%x paddr_send:%x\n", my_stream_id, __func__, my_i, my_last_block_vaddr, block_vaddr, paddr, paddr_send);
+                //     my_sent_requests++;
+                //     createReadPacket(paddr_send, num_request_table_cacheline_accesses); 
+                //     channel_sent[addr_vec[ADDR_CHANNEL_LEVEL]] = true;
+                //     my_last_block_vaddr = block_vaddr;
+                // }
 
             } else if (my_instruction->opcode == Instruction::OpcodeType::STREAM_LD) {
                 DPRINTF(MAAStream, "S[%d] %s: SPD[%d][%d] = %u (cond not taken)\n", my_stream_id, __func__, my_dst_tile, my_i, 0);
@@ -383,6 +370,16 @@ void StreamAccessUnit::executeInstruction() {
                     }
                 }
                 my_set_fake_max = std::max(my_set_fake_max, my_i);
+            }
+
+            if(element_there_but_not_requested && (my_i == my_size -1 || word_id + my_stride >=  num_words_per_cl)){
+                element_there_but_not_requested = false;
+                std::vector<int> addr_vec = maa->map_addr(paddr);
+                num_request_table_cacheline_accesses++;
+                Addr paddr_send = translatePacket(block_vaddr);
+                DPRINTF(MAAStream, "S[%d] %s: Sending Request my_i:%d my_last_block_vaddr=%x block_vaddr:%x paddr:%x paddr_send:%x\n", my_stream_id, __func__, my_i, my_last_block_vaddr, block_vaddr, paddr, paddr_send);
+                my_sent_requests++;
+                createReadPacket(paddr_send, num_request_table_cacheline_accesses); 
             }
 
             if(fetch_tiles_from_cache){
