@@ -234,7 +234,18 @@ bool IF::pushInstruction(Instruction _instruction) {
         DPRINTF(MAAController, "%s: %s cannot be pushed b/c of no space!\n", __func__, _instruction.print());
         return false;
     }
+
+
     assert(free_instruction_slot < num_instructions_per_maa);
+
+    if (_instruction.dst1SpdID != -1) {
+        maa->spd->tile_write_counts[_instruction.dst1SpdID] = 0;
+    }
+
+    if (_instruction.dst2SpdID != -1) {
+        maa->spd->tile_write_counts[_instruction.dst2SpdID] = 0;
+    }
+
     instructions[maa_id][free_instruction_slot] = _instruction;
     valids[maa_id][free_instruction_slot] = true;
     instructions[maa_id][free_instruction_slot].if_id = free_instruction_slot;
